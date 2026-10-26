@@ -2,15 +2,15 @@
 
 {
 	// IMPORTANT: Always keep this up to date with the version number in app_src/main.js
-	const LATEST_VERSION = '2.1.0';
+	const LATEST_VERSION = '2.2.0';
 
 	if (App.isUsingClient) {
 		if (typeof POKECLICKER_SCRIPTS_DESKTOP_VERSION !== 'string' 
-			|| POKECLICKER_SCRIPTS_DESKTOP_VERSION < LATEST_VERSION) {
+			|| LATEST_VERSION.localeCompare(POKECLICKER_SCRIPTS_DESKTOP_VERSION, undefined, {numeric: true}) > 0) {
 			Notifier.notify({
 		      type: NotificationConstants.NotificationOption.info,
 		      title: 'Pokéclicker Scripts Desktop update',
-		      message: 'A new version of Pokéclicker Scripts Desktop is available for download:\n\n<a href="https://github.com/Ephenia/Pokeclicker-Scripts/tree/master/desktop" target="_blank">https://github.com/Ephenia/Pokeclicker-Scripts/tree/master/desktop</a>',
+		      message: 'A new version of Pokéclicker Scripts Desktop is available for download:\n\n<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/tree/master/desktop" target="_blank">https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/tree/master/desktop</a>',
 		      timeout: GameConstants.DAY,
 		    });
 		}

@@ -3,7 +3,7 @@ class DesktopScriptHandler {
     
     static getScriptEnabled(name, defaultVal = false) {
         var val = localStorage.getItem(name);
-        val = JSON.parse(val);
+        try { val = JSON.parse(val); } catch (_) { val = null; }
         if (typeof val === 'boolean') {
             return val;
         }
@@ -16,7 +16,13 @@ class DesktopScriptHandler {
     }
 
     static isUserScriptEnabled(name) {
-        return this.getScriptEnabled(name, true);
+        const key = 'desktopUserScript:' + name;
+        if (localStorage.getItem(key) === null) {
+            // Migrate the historical first-dot key, including an explicit OFF.
+            const legacy = this.getScriptEnabled(name.split('.')[0], true);
+            localStorage.setItem(key, legacy);
+        }
+        return this.getScriptEnabled(key, true);
     }
 
     static registerEpheniaScript(name) {
@@ -43,14 +49,26 @@ class DesktopScriptHandler {
             this.hasRegisteredUserScript = true;
         }
 
-        this.addScriptEnabledSetting(name, settingContainer, enabled);
+        this.addScriptEnabledSetting('desktopUserScript:' + name, settingContainer, enabled, `Enable ${name}`);
     }
 
     static addScriptEnabledSetting(name, container, enabled, customText = null, alphabetical = true) {
+        if (document.getElementById('checkbox-' + name)) return;
         var setting = document.createElement('tr')
-        setting.innerHTML =
-        `<td class="p-2 col-md-8"><label class="m-0" for="checkbox-${name}">${customText || `Enable ${name}`}</label></td>` + 
-            `<td class="p-2 col-md-4"><input id="checkbox-${name}" type="checkbox"></td>`;
+        const labelCell = document.createElement('td');
+        labelCell.className = 'p-2 col-md-8';
+        const label = document.createElement('label');
+        label.className = 'm-0';
+        label.htmlFor = 'checkbox-' + name;
+        label.textContent = customText || `Enable ${name}`;
+        labelCell.appendChild(label);
+        const inputCell = document.createElement('td');
+        inputCell.className = 'p-2 col-md-4';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = 'checkbox-' + name;
+        inputCell.appendChild(input);
+        setting.append(labelCell, inputCell);
 
         container = document.getElementById(container);
         // Insert setting in alphabetical order
@@ -75,24 +93,51 @@ class DesktopScriptHandler {
     // Should only be called by main.js once per game launch!
     static shouldScriptsAutoUpdate() {
         var returnval = this.scriptAutoUpdatesEnabled() || this.updateScriptsNextLaunch();
-        // Clear one-time update flag
-        localStorage.setItem('epheniaUpdateScriptsNextLaunch', false);
+        // The main process clears this only after a successful update check.
         return returnval;
     }
 
     static scriptAutoUpdatesEnabled() {
         var val = localStorage.getItem('epheniaScriptAutoUpdates');
-        val = JSON.parse(val);
+        try { val = JSON.parse(val); } catch (_) { val = null; }
         return val !== false;
     }
 
     static updateScriptsNextLaunch() {
         var val = localStorage.getItem('epheniaUpdateScriptsNextLaunch');
-        val = JSON.parse(val);
+        try { val = JSON.parse(val); } catch (_) { val = null; }
         return val === true;
     }
 
+    static showStatus() {
+        let row = document.getElementById('desktop-script-status');
+        if (!row) {
+            row = document.createElement('tr');
+            row.id = 'desktop-script-status';
+            row.appendChild(document.createElement('td'));
+            row.firstChild.colSpan = 2;
+            document.getElementById('settings-scripts-desktopSettings').prepend(row);
+        }
+        const versions = window.desktopScriptsVersions || {};
+        const state = window.desktopScriptsStatus || {};
+        row.firstChild.style.whiteSpace = 'pre-line';
+        row.firstChild.textContent = `Scripts Desktop: ${versions.scripts || '?'} | Game: ${typeof App !== 'undefined' ? App.game?.update?.version || '?' : '?'}
+Client installed: ${versions.client || 'unknown'} | Modified package: ${versions.package || '?'} | Electron: ${versions.electron || '?'}
+${state.offline ? 'Offline: using cached scripts' : `Updates: ${state.updated || 0} installed, ${state.available || 0} available, ${state.failed || 0} failed`}
+${state.desktopUpdateAvailable ? 'Desktop scripts update available: ' + state.latestDesktopVersion + ' (see the fork desktop page)' : ''}
+${state.errors?.length ? 'Scripts with errors: ' + state.errors.join(', ') : 'Script loading finished'}`;
+        if (state.desktopUpdateAvailable) {
+            const link = document.createElement('a');
+            link.href = 'https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/tree/master/desktop';
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = ' Desktop update instructions';
+            row.firstChild.appendChild(link);
+        }
+    }
+
     static init() {
+        if (document.getElementById('settings-scripts-desktopSettings')) return;
         console.log('Loading Pokéclicker Scripts Desktop scripthandler');
 
         // Fixes the Scripts nav item getting wrapped to the bottom by increasing the max width of the window
@@ -135,6 +180,8 @@ class DesktopScriptHandler {
             elem.setAttribute('id', 'settings-scripts-' + id);
             table.appendChild(elem);
         });
+
+        if (window.jQuery) window.jQuery('#settingsModal').on('show.bs.modal', () => this.showStatus());
 
         // Add info about restarting to the top
         let info = document.createElement('tr');

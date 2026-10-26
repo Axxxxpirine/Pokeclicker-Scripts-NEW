@@ -92,6 +92,9 @@ L4 does not replace the dungeon exploration algorithm, stack purification flow, 
 9. [**Script Fixer Upper**](#script-fixer-upper)
 10. [**Script Handler** (Included in desktop/app.asar)](#script-manager)
 # Custom Scripts
+- [**Optional Resources**](#optional-resources)
+- [**Optional Battle Cafe**](#optional-battle-cafe)
+- [**Optional Accelerators**](#optional-accelerators)
 1. [**Auto Quest Completer** ](#auto-quest-completer)
 9. [**Auto Safari Zone** ](#auto-safari-zone)
 2. [**Catch Speed Adjuster** ](#catch-speed-adjuster)
@@ -374,6 +377,35 @@ This script is only compatible with the desktop client. For detailed instruction
 
 <hr>
 
+<a name="optional-resources"></a>
+## [Custom] Optional Resources
+
+[Install Optional Resources](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalresources.user.js)
+
+In **Save → Optional resources**, explicitly enable cheats for this session, choose a resource and enter a whole quantity. Adds currencies through the native wallet (without bonuses), current mining items and Key Stone through their native item APIs, berries, Dream Orbs, or purification flow. The flow chamber must be unlocked and flow is limited to the native cap. Currency statistics and berry unlocks can change too. Quantities must be 1–1,000,000,000 and totals must remain within JavaScript's safe numeric range.
+
+The optional hourly Dream Orb bonus runs only after Start, for at most 1–100 orbs. It counts observed time while the page is visible, excludes suspended/hidden time, and awards one randomly selected unlocked orb per hour. Stop or reload discards partial progress. It does not award offline catch-up. Inspired by EasyGoinGaming's [PR #416](https://github.com/ephymew/Pokeclicker-Scripts/pull/416), rewritten for the current game. Key Stone is granted directly, without changing the mining pool or introducing artificial item IDs.
+
+<a name="optional-battle-cafe"></a>
+## [Custom] Optional Battle Cafe
+
+[Install Optional Battle Cafe](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalbattlecafe.user.js)
+
+In the **Battle Cafe** window, select a sweet, spin recipe, reward time and batch size (1–100), then explicitly start an accelerated batch. One result is resolved every 0.1 seconds, including the hour-long Cheesy Milcery recipe. Each result pays the native berry cost and consumes a daily spin unless the resulting Pokémon is resistant, matching the native exemption. The Café must be unlocked. Insufficient berries, missing spins, or an existing native spin stop/prevent the batch. Stop cancels pending results. Extra spins can be granted separately, 1–100 per click.
+
+Recipe names state the time needed for their flavor. Choose the matching Day/Night/Dusk override to guarantee that flavor. The override is scoped to reward calculation and does not change the game clock. This controls one selected recipe per batch, not an automatic tour of every sweet and form.
+
+<a name="optional-accelerators"></a>
+## [Custom] Optional Accelerators
+
+[Install Optional Accelerators](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalaccelerators.user.js)
+
+In **Settings → Scripts**, choose farm speed 0.5×, 2×, 5× or 10×. This scales complete online farm updates, including growth, withering, mulch, mutations, wanderer checks and farmhands. Faster farmhands may spend berries and money faster. Auto Farmer polling and offline growth keep their own timing. The separate hatch option adds one base EV through the native effort-point calculation after a successful hatch, including helpers. Pokérus eligibility, multipliers, held items and the slow-EV challenge apply. No extra shiny or shadow multiplier is added. A separate 2× party-attack toggle advances only the route combat counter. It leaves capture delays, damage, game time, gyms, dungeons and Battle Frontier unchanged.
+
+**All L5 effects start OFF after each reload.** Each script is separately installable and can be disabled. Turning effects OFF stops future behavior and restores native methods where applicable. It does not remove resources, Pokémon, EVs, achievements or other progression already earned. Export a save first and test on a copy. No script in this lot changes the save schema, adds hatchery slots, or intercepts version migrations to keep MissingNo. Same-version MissingNo serialization is already preserved by game 0.10.26. This lot has been tested on a local browser copy of that version, not installed into Joey's original Zen game or validated in Desktop.
+
+<hr>
+
 <a name="auto-quest-completer"></a>
 ## [Custom] Auto Quest Completer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/autoquestcompleter.user.js">autoquestcompleter.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/autoquestcompleter.user.js">One-Click Install</a>)
 This script automatically completes and starts quests and can be toggled with this button:<br>
@@ -473,12 +505,8 @@ This also removes any requirements needed to unlock any Oak Item slots, meaning 
 <hr>
 
 <a name="omega-protein-gains"></a>
-## [Custom] Omega Protein Gains (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/omegaproteingains.user.js">omegaproteingains.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/omegaproteingains.user.js">One-Click Install</a>)
-This script removes the limit for the amount of Proteins that you're able to use on Pokémon:<br>
-
-![image](https://i.imgur.com/2kXCzUA.png)
-
-I haven't tested the limits of how many Proteins you can give, but it should practically be infinite.
+## [Custom] Omega Protein Gains (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/codex/l5-custom-options/custom/omegaproteingains.user.js">omegaproteingains.user.js</a>) (<a href="https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/omegaproteingains.user.js">One-Click Install</a>)
+In **Settings → Scripts → Omega Protein Gains**, enable the optional native-limit override, then set a personal Protein/Calcium ceiling per Pokémon (default 1000). Unlimited Protein/Calcium requires a separate explicit switch. Both switches start OFF on each reload, and only the numeric ceiling is saved. Carbos remains capped at 70 while enabled. Existing vitamins are never removed when lowering the ceiling or disabling the script. Stock, the no-vitamins challenge and hatchery restrictions are respected. The game's expanded vitamin table already lets you enter a target amount directly, including quantities above 10.
 
 <hr>
 

@@ -7,8 +7,8 @@
 // @version       1.0.0
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
-// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalbattlecafe.user.js
-// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalbattlecafe.user.js
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js
 // @match         https://www.pokeclicker.com/
 // @grant         unsafeWindow
 // @run-at        document-idle

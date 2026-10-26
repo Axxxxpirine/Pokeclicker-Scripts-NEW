@@ -4,8 +4,8 @@
 // @author        Axxxxpirine (Ideas: goldhaxx #431, Bowbylone/Dionisos94 #240, Sorrow #134)
 // @description   Bounded route, gym, dungeon and quest objectives with manual interruption, return, and Poké Mart budgets. Requires the fork's Enhanced Auto Clicker.
 // @license       GPL-3.0 License
-// @version       1.0.0
-// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW
+// @version       1.1.0
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js
 // @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js
@@ -23,6 +23,8 @@ class AutoNavigator {
         routePokerus: 'Route Pokérus resistance', dungeonPokerus: 'Dungeon Pokérus resistance',
         quests: 'Active location quests', shop: 'Buy to stock target', frontier: 'Visit Battle Frontier',
         roamer: 'Capture roaming species (ID)', purify: 'Purify Shadow Pokémon (native flow)',
+        achievement: 'Complete currently tracked achievement', league: 'Current League: additional cycles',
+        zoneCapture: 'Current zone: capture all available Pokémon', zoneShiny: 'Current zone: capture all available shiny',
     };
     static defaults = { mode: 'routes', target: 10000, moneyBudget: 0, tokenBudget: 0,
         moneyReserve: 0, tokenReserve: 0, minutes: 60, stallMinutes: 5, pokemon: '', item: 'Pokeball', stock: 100 };
@@ -44,7 +46,8 @@ class AutoNavigator {
             <div class="d-flex mt-2" style="gap:6px"><button class="btn btn-success" id="navigation-start">Start</button>
             <button class="btn btn-secondary" id="navigation-stop">Stop & return</button></div>
             <div role="status" id="navigation-status">OFF · Money and token budgets default to zero. Active sessions never resume after reload.</div>
-            <small>Requires Enhanced Auto Clicker. Manual travel or clicker toggles cancel without returning. Capture uses your existing ball filters. Shop buys only at base price, returning to your starting route while prices recover. Unavailable or stalled targets are skipped. Budgets cover this session's entries and purchases only.</small>`;
+            <small>Requires Enhanced Auto Clicker. Manual travel or clicker toggles cancel without returning. Capture uses your existing ball filters. Shop buys only at base price, returning to your starting route while prices recover. Unavailable or stalled targets are skipped. Budgets cover this session's entries and purchases only.</small>
+            <div><small>Tracked achievement: select a native route, gym or dungeon achievement in the game before Start. Stops at that tier. League: start in a League town, Target count is additional full cycles (maximum 10,000). Current zone: start on a route or in a dungeon town, Target count caps additional route defeats or dungeon entries, including losses. Only currently available encounters count. Session and no-progress limits also stop shiny searches, without guaranteeing a capture.</small></div>`;
         document.querySelector('.battle-view').before(panel);
         const fields = panel.querySelector('#auto-navigation-fields');
         const add = (key, label, options) => {
@@ -78,6 +81,7 @@ class AutoNavigator {
         return s && Object.hasOwn(this.modes,s.mode) && this.shopItems.includes(s.item) && typeof s.pokemon === 'string'
             && ['target','stock','minutes','stallMinutes'].every(k => Number.isSafeInteger(s[k]) && s[k] >= 1)
             && s.minutes <= 1440 && s.stallMinutes <= 1440
+            && (s.mode !== 'league' || s.target <= 10000)
             && ['moneyBudget','tokenBudget','moneyReserve','tokenReserve'].every(k => Number.isSafeInteger(s[k]) && s[k] >= 0)
             && (!['capture','roamer'].includes(s.mode) || (/^\d+(\.\d+)?$/.test(s.pokemon) && Number(s.pokemon) > 0));
     }
@@ -132,6 +136,11 @@ class AutoNavigator {
 
     static accessible(t) {
         if (t.region < 0 || t.region > player.highestRegion()) return false;
+        // MapHelper.accessToRoute/accessToTown only check the destination.
+        // Native openShipModal also requires the current region's dock to be
+        // unlocked before leaving, including when returning to an older region.
+        if (t.region !== player.region && !(player.highestRegion() > 0
+            && TownList[GameConstants.DockTowns?.[player.region]]?.isUnlocked())) return false;
         if (t.kind === 'route') return !!MapHelper.accessToRoute(t.number,t.region);
         if (!TownList[t.name] || !MapHelper.accessToTown(t.name)) return false;
         if (t.kind === 'dungeon') return !!TownList[t.name].dungeon?.isUnlocked() && TownList[t.name].dungeon.hasUnlockedBoss() && !DungeonGuides.hired();
@@ -161,6 +170,8 @@ class AutoNavigator {
         if (['capture','roamer'].includes(settings.mode) && !pokemonMap[Number(settings.pokemon)]) {
             this.status('Unknown species ID.'); return false;
         }
+        const objective = this.prepareObjective(settings);
+        if (!objective) return false;
         this.settings = {...settings}; localStorage.setItem('autoNavigationSettings',JSON.stringify(this.settings));
         this.clicker = clicker; clicker.navigationOwner = this;
         this.origin = this.location();
@@ -173,6 +184,12 @@ class AutoNavigator {
         // A reload must not restart any unattended spending loop.
         for (const key of ['autoClickState','autoGymState','autoDungeonState']) localStorage.setItem(key,'false');
         this.purified = 0; this.spent = {money:0,dungeonToken:0}; this.skipped = new Set(); this.current = null;
+        this.achievementGoal = objective.achievement;
+        this.fixedTarget = objective.target;
+        this.leagueTargets = objective.league;
+        this.leaguePosition = 0; this.leagueCycles = 0;
+        this.zoneEntries = 0;
+        this.zoneStartClears = this.fixedTarget?.kind === 'route' ? this.clears(this.fixedTarget) : 0;
         this.deadline = Date.now()+settings.minutes*60000; this.nextPlanAt = 0;
         this.questIds = new WeakMap(); this.nextQuestId = 0;
         this.startClears = settings.mode === 'dungeonRuns' ? this.clears({kind:'dungeon',name:this.origin.name}) : 0;
@@ -188,6 +205,7 @@ class AutoNavigator {
         const c = this.clicker;
         this.own(() => {
             GymRunner.autoRestart(false);
+            if (abandon && this.current?.kind === 'gym' && GymRunner.gymObservable?.()?.town === this.current.gym) GymRunner.running?.(false);
             if (c.autoDungeonState()) c.toggleAutoDungeon();
             if (c.autoGymState()) c.toggleAutoGym();
             const returned = returnHome && this.move(this.origin);
@@ -225,9 +243,62 @@ class AutoNavigator {
         return t.kind === 'route' ? RouteHelper.getAvailablePokemonList(t.number,t.region,false)
             : TownList[t.name].dungeon.allAvailablePokemon();
     }
+    static prepareObjective(settings) {
+        if (settings.mode === 'achievement') {
+            const achievement = App.game.achievementTracker?.trackedAchievement?.();
+            const requirement = achievement?.property;
+            let target;
+            if (typeof RouteKillRequirement !== 'undefined' && requirement instanceof RouteKillRequirement) {
+                target = this.routes().find(t => t.number === requirement.route && t.region === requirement.region);
+            } else if (typeof ClearGymRequirement !== 'undefined' && requirement instanceof ClearGymRequirement) {
+                target = this.gyms().find(t => GameConstants.getGymIndex(t.gym) === requirement.gymIndex);
+            } else if (typeof ClearDungeonRequirement !== 'undefined' && requirement instanceof ClearDungeonRequirement) {
+                target = this.dungeons().find(t => GameConstants.getDungeonIndex(t.name) === requirement.dungeonIndex);
+            } else {
+                this.status('Tracked achievement unsupported: select a native route, gym or dungeon achievement.'); return null;
+            }
+            if (!target || !Number.isSafeInteger(requirement.requiredValue) || requirement.requiredValue < 1
+                || requirement.option !== GameConstants.AchievementOption.more || typeof achievement.isCompleted !== 'function'
+                || (typeof achievement.achievable === 'function' && !achievement.achievable())) {
+                this.status('Tracked achievement is not accessible or its requirement is unsupported.'); return null;
+            }
+            return { achievement, target };
+        }
+        if (settings.mode === 'league') {
+            const town = !player.route && player.town;
+            const gyms = town ? town.content.filter(content => Object.values(GymList).includes(content)) : [];
+            if (gyms.length < 2 || !gyms.some(gym => gym.flags?.champion)) {
+                this.status('Start in a native League town with its Elite members and Champion.'); return null;
+            }
+            const league = gyms.map(gym => ({kind:'gym',name:town.name,gym:gym.town,region:town.region,key:`g:${gym.town}`}));
+            if (!this.accessible(league[0])) { this.status('The first League member is locked or inaccessible.'); return null; }
+            return { league };
+        }
+        if (['zoneCapture','zoneShiny'].includes(settings.mode)) {
+            const target = player.route ? this.routes().find(t => t.region === player.region && t.number === player.route)
+                : this.dungeons().find(t => t.name === player.town?.name);
+            if (!target || typeof App.game.party.alreadyCaughtPokemonByName !== 'function') {
+                this.status('Select an accessible route or dungeon town for the current-zone objective.'); return null;
+            }
+            return { target };
+        }
+        return {};
+    }
+    static missingSpecies(t) {
+        return [...new Set(this.species(t))].filter(name =>
+            !App.game.party.alreadyCaughtPokemonByName(name, this.settings.mode === 'zoneShiny'));
+    }
+    static zoneLimitReached() {
+        return this.fixedTarget.kind === 'route'
+            ? this.clears(this.fixedTarget) - this.zoneStartClears >= this.settings.target
+            : this.zoneEntries >= this.settings.target;
+    }
     static needsResistance(name) { return App.game.party.getPokemonByName(name)?.pokerus === GameConstants.Pokerus.Contagious; }
     static remaining(t) {
         const mode = this.settings.mode;
+        if (mode === 'achievement') return !this.achievementGoal.isCompleted();
+        if (mode === 'league') return this.clears(t) < t.winTarget;
+        if (['zoneCapture','zoneShiny'].includes(mode)) return this.missingSpecies(t).length > 0;
         if (mode === 'purify') return this.purified < this.settings.target && App.game.party.caughtPokemon.some(p=>p.shadow === GameConstants.ShadowStatus.Shadow);
         if (t.quest) return !t.quest.isCompleted() && App.game.quests.currentQuests().includes(t.quest);
         if (mode.includes('Pokerus')) return this.species(t).some(n=>this.needsResistance(n));
@@ -240,6 +311,8 @@ class AutoNavigator {
         return this.clears(t) < (mode === 'dungeonRuns' ? this.startClears + this.settings.target : this.settings.target);
     }
     static progress(t) {
+        if (this.settings.mode === 'achievement') return this.achievementGoal.property.getProgress();
+        if (['zoneCapture','zoneShiny'].includes(this.settings.mode)) return -this.missingSpecies(t).length;
         if (this.settings.mode === 'purify') return App.game.purifyChamber.currentFlow() + this.purified;
         if (t.quest) return Number(t.quest.focus?.() ?? 0);
         if (this.settings.mode.includes('Pokerus')) return this.species(t).reduce((n,name)=>n+(App.game.party.getPokemonByName(name)?.effortPoints ?? 0),0);
@@ -254,6 +327,11 @@ class AutoNavigator {
     static shopItem() { return ItemList[this.settings.item]; }
     static candidates() {
         const mode = this.settings.mode;
+        if (mode === 'achievement' || ['zoneCapture','zoneShiny'].includes(mode)) return [this.fixedTarget];
+        if (mode === 'league') {
+            const target = this.leagueTargets[this.leaguePosition];
+            return [{...target, winTarget: this.clears(target) + 1}];
+        }
         if (mode === 'purify') return PurifyChamber.requirements.isCompleted() ? [{...this.origin,key:'purify'}] : [];
         if (['routes','routePokerus','roamer'].includes(mode)) return this.routes();
         if (['dungeons','dungeonPokerus'].includes(mode)) return this.dungeons();
@@ -311,6 +389,13 @@ class AutoNavigator {
                 return;
             }
             if (Battle.catching() || DungeonBattle.catching()) return;
+            if (this.settings.mode === 'achievement') {
+                if (this.achievementGoal.isCompleted()) { this.stop('Tracked achievement completed'); return; }
+                if (App.game.achievementTracker.trackedAchievement() !== this.achievementGoal) { this.stop('Tracked achievement changed'); return; }
+            }
+            if (['zoneCapture','zoneShiny'].includes(this.settings.mode) && this.zoneLimitReached()) {
+                this.stop('Current-zone attempt limit reached'); return;
+            }
             if (this.current && this.settings.mode !== 'shop') {
                 const t = this.current, loc = this.location();
                 if ((t.kind === 'route' && (loc.kind !== 'route' || loc.number !== t.number || loc.region !== t.region)) ||
@@ -320,6 +405,15 @@ class AutoNavigator {
             }
             if (!force && Date.now() < this.nextPlanAt) return;
             this.nextPlanAt = Date.now()+500;
+            if (this.settings.mode === 'league') {
+                if (this.current && !this.remaining(this.current)) {
+                    this.current = null;
+                    this.leaguePosition++;
+                    if (this.leaguePosition === this.leagueTargets.length) { this.leaguePosition = 0; this.leagueCycles++; }
+                    if (this.leagueCycles >= this.settings.target) { this.stop('League cycle target completed'); return; }
+                }
+                if (!this.accessible(this.leagueTargets[this.leaguePosition])) { this.stop('League member locked or inaccessible'); return; }
+            }
             if (this.current) {
                 const t = this.current;
                 const p = this.progress(t);
@@ -356,6 +450,7 @@ class AutoNavigator {
                     this.skipped.add(t.key); this.current = null; return;
                 }
                 this.runId = DungeonRunner.dungeonID;
+                if (['zoneCapture','zoneShiny'].includes(this.settings.mode)) this.zoneEntries++;
                 this.clicker.autoDungeonTracker.ID=-1;
             } else if (t.kind === 'gym') this.own(()=>GymRunner.startGym(GymList[t.gym],false));
             else if (t.kind === 'shop') {
@@ -374,9 +469,20 @@ class AutoNavigator {
         } catch (e) { console.error('[Auto Navigation]',e);this.stop(`Stopped after error: ${e.message}`); }
     }
     static explore() {
-        if (!this.active || this.current?.kind !== 'dungeon') return;
-        try { this.own(()=>this.clicker.autoDungeon()); }
+        if (!this.active || this.current?.kind !== 'dungeon' || App.game.gameState !== GameConstants.GameState.dungeon
+            || DungeonRunner.dungeonID !== this.runId) return;
+        const collection = ['zoneCapture','zoneShiny'].includes(this.settings.mode);
+        const c = this.clicker;
+        const preferences = { autoDungeonEncounterMode:c.autoDungeonEncounterMode,
+            autoDungeonChestMode:c.autoDungeonChestMode, autoDungeonLootTier:c.autoDungeonLootTier };
+        try {
+            // Use the existing traversal's full encounter/chest modes for a
+            // collection objective. Restore preferences without persisting them.
+            if (collection) Object.assign(c, {autoDungeonEncounterMode:true,autoDungeonChestMode:true,autoDungeonLootTier:0});
+            this.own(()=>c.autoDungeon());
+        }
         catch (e) { console.error('[Auto Navigation]',e);this.stop('Dungeon traversal failed'); }
+        finally { if (collection) Object.assign(c, preferences); }
     }
 }
 

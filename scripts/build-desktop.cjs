@@ -5,7 +5,11 @@ const root = path.resolve(__dirname, '..');
 const stage = path.join(root, '.local/desktop-build');
 (async () => {
     fs.rmSync(stage, {recursive:true, force:true});
-    fs.cpSync(path.join(root,'desktop/app_src'), stage, {recursive:true});
+    fs.cpSync(path.join(root,'desktop/app_src'), stage, {
+        recursive:true,
+        verbatimSymlinks:true,
+        filter: source => !['.bin', '.package-lock.json'].includes(path.basename(source)),
+    });
     fs.copyFileSync(path.join(root,'LICENSE'),path.join(stage,'LICENSE-GPL-3.0.txt'));
     const bundled = path.join(stage,'bundled-scripts');
     fs.mkdirSync(bundled,{recursive:true});

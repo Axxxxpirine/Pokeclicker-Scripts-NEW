@@ -5,7 +5,7 @@
 // @description   Automatically mines the Underground with Chisel and Hammer. Optional treasure selling, compatible with Pokéclicker 0.10.26.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.0.0
+// @version       3.0.1
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -183,6 +183,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('enhancedautomine') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('enhancedautomine') ?? (localStorage.getItem('enhancedautomine') === 'true'))) {
     loadEpheniaScript('enhancedautomine', initAutoMine);
 }

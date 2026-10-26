@@ -5,7 +5,7 @@
 // @description   Adds additional settings for hiding some visual things to help out with performance. Also, includes various features that help with ease of accessibility.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.0.1
+// @version       3.0.2
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -577,10 +577,8 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('additionalvisualsettings') === 'true') {
-    if (!App.isUsingClient) {
-        // Necessary for userscript managers
-        unsafeWindow.AdditionalVisualSettings = AdditionalVisualSettings;
-    }
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('additionalvisualsettings') ?? (localStorage.getItem('additionalvisualsettings') === 'true'))) {
+    // Knockout evaluates these bindings in the page, outside the script wrapper.
+    (!App.isUsingClient ? unsafeWindow : window).AdditionalVisualSettings = AdditionalVisualSettings;
     loadEpheniaScript('additionalvisualsettings', () => AdditionalVisualSettings.initVisualSettings(), () => AdditionalVisualSettings.initOnLoad());
 }

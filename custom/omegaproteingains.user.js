@@ -5,7 +5,7 @@
 // @description   Opt-in vitamin cap override with a personal Protein/Calcium ceiling or explicit unlimited mode. Starts OFF and keeps Carbos capped at 70.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.2.1
+// @version       1.2.2
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -221,6 +221,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('omegaproteingains') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('omegaproteingains') ?? (localStorage.getItem('omegaproteingains') === 'true'))) {
     loadEpheniaScript('omegaproteingains', initOmegaProtein);
 }

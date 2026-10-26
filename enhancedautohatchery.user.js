@@ -5,7 +5,7 @@
 // @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.3.0
+// @version       3.3.1
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -600,6 +600,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('enhancedautohatchery') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('enhancedautohatchery') ?? (localStorage.getItem('enhancedautohatchery') === 'true'))) {
     loadEpheniaScript('enhancedautohatchery', initAutoHatch, bindAutoHatcher);
 }

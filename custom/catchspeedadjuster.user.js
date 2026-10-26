@@ -5,7 +5,7 @@
 // @description   Adjusts catch speed of all Pokeballs. Currently only makes Pokeballs catch as fast as possible.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.4.4
+// @version       1.4.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -128,6 +128,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('catchspeedadjuster') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('catchspeedadjuster') ?? (localStorage.getItem('catchspeedadjuster') === 'true'))) {
     loadEpheniaScript('catchspeedadjuster', initBallAdjust);
 }

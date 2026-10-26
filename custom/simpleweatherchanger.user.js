@@ -5,7 +5,7 @@
 // @description   Adds a button to select the weather for the current region, also freezes all weather
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.4.4
+// @version       1.4.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -137,6 +137,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('simpleweatherchanger') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('simpleweatherchanger') ?? (localStorage.getItem('simpleweatherchanger') === 'true'))) {
     loadEpheniaScript('simpleweatherchanger', initWeatherChange);
 }

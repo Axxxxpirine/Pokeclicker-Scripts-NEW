@@ -5,7 +5,7 @@
 // @description   Edit your save for debug (currency, gems, pokeballs, pokemons, ...)
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.1.1
+// @version       1.1.2
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -609,6 +609,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('debugcheatstools') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('debugcheatstools') ?? (localStorage.getItem('debugcheatstools') === 'true'))) {
     loadEpheniaScript('debugcheatstools', initSaveEditor);
 }

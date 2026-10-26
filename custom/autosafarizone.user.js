@@ -8,18 +8,20 @@
 // @description   Adds in toggable options to move/catch pokemons/pick up items and have fast animations on both safari zones
 // @copyright     https://github.com/Kanzen01
 // @license       GPL-3.0 License
-// @version       1.2.4
+// @version       1.2.5
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/autosafarizone.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/autosafarizone.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autosafarizone.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autosafarizone.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
 // @grant         unsafeWindow
 // @run-at        document-idle
 // ==/UserScript==
+// Fork compatibility update, 2026-10-26: fixes for Pokéclicker 0.10.26.
+
 
 function initAutoSafari() {
   var autoSafariState = false;
@@ -98,8 +100,8 @@ function initAutoSafari() {
 
   function startAutoSafari() {
     scriptState = SCRIPT_STATES.inactive;
-    cachedPath.length = 0;
-    targetCoords.length = 0;
+    cachedPath = [];
+    targetCoords = [];
     forceSkipItems = false;
     forceSkipShinies.length = 0;
     hasPrioritySpawns = 0;
@@ -107,6 +109,7 @@ function initAutoSafari() {
     stopAfterGameOver = false;
     mapHasTileType = {};
     // Interval slightly longer than movement speed (0.25s by default) to avoid graphical glitches
+    clearInterval(autoSafariProcessId);
     autoSafariProcessId = setInterval(doSafariTick, tickSpeed());
   }
 
@@ -144,7 +147,7 @@ function initAutoSafari() {
       if (!Safari.inProgress() && Safari.canPay()) {
         Safari.payEntranceFee();
         forceSkipItems = false;
-        cachedPath.length = 0;
+        cachedPath = [];
         hasPrioritySpawns = 0;
       } else {
         toggleAutoSafari();
@@ -298,38 +301,26 @@ function initAutoSafari() {
     }
 
     const encounterTiles = new Set(chosenTiles);
-    return findShortestPathToTiles((row, col) => (encounterTiles.has(Safari.grid[row][col])) && !isIsolatedTile(row, col));
-  }
-
-  function isIsolatedTile(row, col) {
-    const tileType = Safari.grid[row][col];
-    const adjacentTiles = [
-      [row - 1, col],
-      [row + 1, col],
-      [row, col - 1],
-      [row, col + 1],
-    ];
-
-    var compareFunc;
-    if (GameConstants.SafariTile.waterUL <= tileType && tileType <= GameConstants.SafariTile.waterDR) {
-      compareFunc = (t) => GameConstants.SAFARI_WATER_BLOCKS.includes(t);
-    } else if (GameConstants.SafariTile.sandUL <= tileType && tileType <= GameConstants.SafariTile.sandULinverted) {
-      compareFunc = (t) => GameConstants.SafariTile.sandUL <= t && t <= GameConstants.SafariTile.sandULinverted;
-    } else if (GameConstants.SafariTile.fenceUL <= tileType && tileType <= GameConstants.SafariTile.fenceDLend) {
-      compareFunc = (t) => GameConstants.SafariTile.fenceUL <= t && t <= GameConstants.SafariTile.fenceDLend;
-    } else if (GameConstants.SafariTile.treeTopL <= tileType && tileType <= GameConstants.SafariTile.treeRootsR) {
-      compareFunc = (t) => GameConstants.SafariTile.treeTopL <= t && t <= GameConstants.SafariTile.treeRootsR;
-    } else {
-      compareFunc = (t) => t === tileType;
+    const isEncounter = (row, col) => encounterTiles.has(Safari.grid[row][col]);
+    const result = findShortestPathToTiles(isEncounter);
+    if (result[1].length) {
+      return result;
     }
-
-    for (const [adjRow, adjCol] of adjacentTiles) {
-      if (isValidPosition(adjRow, adjCol) && compareFunc(Safari.grid[adjRow][adjCol])) {
-        return false; // Found an adjacent tile with the same value
+    // A single grass tile can be the only habitat for a priority spawn.
+    // Walk off and back onto it instead of excluding isolated encounter tiles.
+    const { x, y } = Safari.playerXY;
+    if (isEncounter(y, x)) {
+      const adjacent = [[y - 1, x, DIRECTIONS.up, DIRECTIONS.down],
+        [y + 1, x, DIRECTIONS.down, DIRECTIONS.up],
+        [y, x - 1, DIRECTIONS.left, DIRECTIONS.right],
+        [y, x + 1, DIRECTIONS.right, DIRECTIONS.left]];
+      for (const [row, col, out, back] of adjacent) {
+        if (isValidPosition(row, col) && GameConstants.SAFARI_LEGAL_WALK_BLOCKS.includes(Safari.grid[row][col])) {
+          return [[y, x], [out, back]];
+        }
       }
     }
-
-    return true; // No adjacent tile with the same value found
+    return result;
   }
 
   function isValidPosition(row, col) {
@@ -374,7 +365,7 @@ function initAutoSafari() {
         }
       }
     }
-    return [null, null];
+    return [[], []];
   }
 
   function fightSafariPokemon() {
@@ -401,8 +392,8 @@ function initAutoSafari() {
 
     // Handle shiny encounters specially
     if (SafariBattle.enemy.shiny) {
-      let canNanab = App.game.farming.berryList[BerryType.Nanab]() > 5;
-      let canRazz = App.game.farming.berryList[BerryType.Razz]() > 5;
+      let canNanab = App.game.farming.berryInventory[BerryType.Nanab]() > 5;
+      let canRazz = App.game.farming.berryInventory[BerryType.Razz]() > 5;
       // Bait is usually the best approach
       if (!(SafariBattle.enemy.angry || SafariBattle.enemy.eating || SafariBattle.enemy.eatingBait !== BaitType.Bait)) {
         // Nanab is highest catch chance, though not highest catch-per-ball efficiency
@@ -453,11 +444,11 @@ function initAutoSafari() {
         SafariBattle.selectedBait(BaitList.Bait);
         // Nanab into rock is best combo of catch chance and efficient ball use
         // Don't waste Nanabs if they won't improve catch rate over just rocks
-        if (App.game.farming.berryList[BerryType.Nanab]() > 25 && SafariBattle.enemy.catchFactor < 100 / (2 + SafariBattle.enemy.levelModifier)) {
+        if (App.game.farming.berryInventory[BerryType.Nanab]() > 25 && SafariBattle.enemy.catchFactor < 100 / (2 + SafariBattle.enemy.levelModifier)) {
           SafariBattle.selectedBait(BaitList.Nanab);
         }
         // Razz into rock is second best
-        else if (App.game.farming.berryList[BerryType.Razz]() > 25) {
+        else if (App.game.farming.berryInventory[BerryType.Razz]() > 25) {
           SafariBattle.selectedBait(BaitList.Razz);
         }
         // Use berry if one was selected

@@ -2,21 +2,23 @@
 // @name          [Pokeclicker] Enhanced Auto Hatchery
 // @namespace     Pokeclicker Scripts
 // @author        Ephenia (Original/Credit: Drak + Ivan Lay, Optimatum)
-// @description   Automatically hatches eggs at 100% completion. Adds an On/Off button for auto hatching as well as an option for automatically hatching store bought eggs and dug up fossils.
+// @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.1.4
+// @version       3.1.5
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/enhancedautohatchery.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/enhancedautohatchery.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
 // @grant         unsafeWindow
 // @run-at        document-idle
 // ==/UserScript==
+// Fork compatibility update, 2026-10-26: fixes for Pokéclicker 0.10.26.
+
 
 var hatchState;
 var eggState;
@@ -36,7 +38,9 @@ function initAutoHatch() {
     Auto Hatch [${hatchState ? 'ON' : 'OFF'}]
     </button>`
 
-    breedingModal.querySelector('.modal-header').querySelectorAll('button')[1].outerHTML += `<button id="pkrs-mode" class="btn btn-${pkrsState ? 'success' : 'danger'}" style="margin-left:20px;">
+    const autoHatchControls = document.createElement('div');
+    autoHatchControls.className = 'd-flex flex-wrap py-2';
+    autoHatchControls.innerHTML = `<button id="pkrs-mode" class="btn btn-${pkrsState ? 'success' : 'danger'}" style="margin-left:20px;">
     PKRS Mode [${pkrsState ? 'ON' : 'OFF'}]
     </button>
     <button id="auto-egg" class="btn btn-${eggState ? 'success' : 'danger'}" style="margin-left:20px;">
@@ -48,6 +52,14 @@ function initAutoHatch() {
     <button id="shiny-fossils" class="btn btn-${shinyFossilState ? 'success' : 'danger'}" style="margin-left:20px;">
     Shiny Fossils [${shinyFossilState ? 'ON' : 'OFF'}]
     </button>`;
+
+    breedingModal.querySelector('.modal-header').after(autoHatchControls);
+    for (const id of ['auto-fossil', 'shiny-fossils']) {
+        const button = document.getElementById(id);
+        button.disabled = true;
+        button.textContent = id === 'auto-fossil' ? 'Fossils: use town traders' : 'Shiny Fossils: unavailable';
+        button.title = 'Pokéclicker removed fossil incubation. Revive fossils at the appropriate town trader.';
+    }
 
     document.getElementById('auto-hatch-start').addEventListener('click', event => { toggleAutoHatch(event); });
     document.getElementById('auto-egg').addEventListener('click', event => { toggleEgg(event); });
@@ -126,6 +138,9 @@ function bindAutoHatcher() {
 }
 
 function autoHatcher() {
+    if (!App.game.breeding.canAccess()) {
+        return;
+    }
     // Attempt to hatch eggs
     for (let i = App.game.breeding.eggSlots - 1; i >= 0; i--) {
         App.game.breeding.hatchPokemonEgg(i);
@@ -140,7 +155,8 @@ function autoHatcher() {
         }
     }
 
-    while (App.game.breeding.hasFreeEggSlot()) {
+    // Always yield to the game clock, even if an item reports success without filling a slot.
+    for (let attempts = 0; attempts < App.game.breeding.eggSlots && App.game.breeding.hasFreeEggSlot(); attempts++) {
         // Attempts enabled autoHatch methods in order until one succeeds
         // (subsequent autoHatch methods aren't called due to short-circuiting)
         let success = pkrsState && autoHatchPkrs();
@@ -236,24 +252,9 @@ function autoHatchEgg() {
 }
 
 function autoHatchFossil() {
-    // Fossils in inventory with amount > 0 
-    let fossilList = UndergroundItems.list.filter(it => it.valueType === UndergroundItemValueType.Fossil && player.itemList[it.itemName]() > 0);
-    if (fossilList.length == 0) {
-        return false;
-    }
-    let priorityList = fossilList.filter(f => { 
-        const caughtStatus = PartyController.getCaughtStatusByName(GameConstants.FossilToPokemon[f.name]);
-        return caughtStatus == CaughtStatus.NotCaught || (shinyFossilState && caughtStatus == CaughtStatus.Caught);
-    });
-    if (priorityList.length) {
-        fossilList = priorityList;
-    }
-    let fossilToUse = fossilList[Math.floor(Math.random() * fossilList.length)];
-    // Workaround as sellMineItem returns null
-    let before = player.amountOfItem(fossilToUse.itemName)
-    UndergroundController.sellMineItem(fossilToUse);
-    let after = player.amountOfItem(fossilToUse.itemName);
-    return before > after;
+    // Fossil eggs and FossilToPokemon were removed in the current game.
+    // Keep saved preferences intact, but never call the obsolete sale/incubation path.
+    return false;
 }
 
 function autoHatchMon() {

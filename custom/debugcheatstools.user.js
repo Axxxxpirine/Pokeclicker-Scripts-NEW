@@ -5,12 +5,12 @@
 // @description   Edit your save for debug (currency, gems, pokeballs, pokemons, ...)
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.0.3
+// @version       1.1.0
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/debugcheatstools.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/debugcheatstools.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/debugcheatstools.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/debugcheatstools.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
@@ -20,8 +20,6 @@
 
 // This script has many more cheats, but it's already too much... https://greasyfork.org/en/scripts/435557-pokeclicker
 
-const profileDrop = document.getElementById('startMenu').querySelectorAll('ul li')[0];
-const profileModal = document.getElementById('profileModal');
 
 function getPokerusImgSrc(id, pkm){
     let lpkm = pkm || App.game.party.getPokemon(id);
@@ -40,15 +38,19 @@ function gainPk(id){
         App.game.party.gainPokemonById(id)
     else if (!(lpkm?.shiny === true))
         App.game.party.gainPokemonById(id, true);
-    document.querySelectorAll(`:scope #pkdx_${id.toString().replace('.','_')} img`)[1].src = getPokeballImgSrc(id, lpkm);
+    document.querySelectorAll(`:scope #pkdx_${id.toString().replace('.','_')} img`)[1].src = getPokeballImgSrc(id);
 }
 
 // eslint-disable-next-line no-unused-vars
 function gainPkrs(id){
     let lpkm = App.game.party.getPokemon(id);
-    if (!lpkm) return;
-    lpkm.effortPoints = ((lpkm.pokerus < 2) ? 1 : 50) * 1000; // strange
-    lpkm.pokerus = (lpkm.pokerus < 2) ? 2 : 3;
+    if (!lpkm || lpkm.pokerus >= GameConstants.Pokerus.Resistant) return;
+    const nextStatus = lpkm.pokerus < GameConstants.Pokerus.Contagious ? GameConstants.Pokerus.Contagious : GameConstants.Pokerus.Resistant;
+    const minimumEffortPoints = nextStatus === GameConstants.Pokerus.Contagious ? 1000 : 50000;
+    lpkm.pokerus = nextStatus;
+    // Preserve earned EV progress. Set status first so native EP subscriptions
+    // can advance it further without being overwritten by this action.
+    lpkm.effortPoints = Math.max(lpkm.effortPoints ?? 0, minimumEffortPoints);
     document.querySelectorAll(`:scope #pkdx_${id.toString().replace('.','_')} img`)[2].src = getPokerusImgSrc(id, lpkm);
 }
 
@@ -59,7 +61,7 @@ function filterPkdx(){
         let display = true;
 
         if (document.getElementById('pkdxNameFilter').value !== ""){
-            display = tdb.innerHTML.includes(document.getElementById('pkdxNameFilter').value);
+            display = tdb.dataset.name.includes(document.getElementById('pkdxNameFilter').value.trim().toLowerCase());
         }
 
         if (display === true) {
@@ -67,7 +69,7 @@ function filterPkdx(){
                 case 'all':
                     break;
                 default:
-                    display = tdb.innerHTML.toLowerCase().includes(document.getElementById('pkdxRegionFilter').value);
+                    display = tdb.dataset.region === document.getElementById('pkdxRegionFilter').value;
                     break;
             }
         }
@@ -133,16 +135,19 @@ function filterQuestLine(){
 
 // eslint-disable-next-line no-unused-vars
 function loadPkdx(){
+    refreshDebugRegions();
     let playerRegion = player.highestRegion();
     let pkdxBody = document.querySelector(':scope #pkdx tbody');
     pkdxBody.innerHTML = '';
     let toAdd = "";
     for (const pokemon of pokemonList) {
-        if (pokemon.nativeRegion <= playerRegion) {
+        const nativeRegion = PokemonHelper.calcNativeRegion(pokemon.name);
+        if (nativeRegion <= playerRegion) {
             let lpkm = App.game.party.getPokemon(pokemon.id);
-            let region = GameConstants.Region[pokemon.nativeRegion].charAt(0).toUpperCase() + GameConstants.Region[pokemon.nativeRegion].slice(1)
+            const regionName = GameConstants.Region[nativeRegion] || 'none';
+            const region = regionName.charAt(0).toUpperCase() + regionName.slice(1);
             let hint = "";
-            let getPokemonLocation = PokemonHelper.getPokemonLocations(pokemon.name, playerRegion);
+            let getPokemonLocation = PokemonLocations.getPokemonLocations(pokemon.name, playerRegion);
             let roadLocations = getPokemonLocation[0]
             if (roadLocations) {
                 for (let i = 0; i <= playerRegion; i++) {
@@ -158,13 +163,13 @@ function loadPkdx(){
                     hint = ` title="${hint}"`;
             }
             toAdd += `
-                <tr id="pkdx_${pokemon.id.toString().replace('.','_')}">
+                <tr id="pkdx_${pokemon.id.toString().replace('.','_')}" data-name="${debugEscape(pokemon.name.toLowerCase())}" data-region="${regionName}">
                     <td>${pokemon.id}</td>
                     <td>${region}</td>
                     <td><img class="smallImage" src="assets/images/pokemon/${pokemon.id}.png" alt=""></td>
-                    <td>${pokemon.name}</td>
-                    <td><img width="18px" src="${getPokeballImgSrc(pokemon.id, lpkm)}" onclick="gainPk(${pokemon.id})"/></td>
-                    <td><img src="${getPokerusImgSrc(pokemon.id, lpkm)}"  onclick="gainPkrs(${pokemon.id})"/></td>
+                    <td>${debugEscape(pokemon.name)}</td>
+                    <td><img width="18px" src="${getPokeballImgSrc(pokemon.id, lpkm)}" data-debug-action="gainPk" data-debug-id="${pokemon.id}"/></td>
+                    <td><img src="${getPokerusImgSrc(pokemon.id, lpkm)}"  data-debug-action="gainPkrs" data-debug-id="${pokemon.id}"/></td>
                     <td${hint}><span class="badge text-light" style="background-color: rgb(${Object.keys(getPokemonLocation).length ? ((hint !== "" ? (hint.includes(region) ? '122, 199, 76'  : '166, 185, 26' ) : '99, 144, 240') + ');">YES') : '194, 46, 40);">NO'}</span></td>
                 </tr>
             `;
@@ -210,13 +215,118 @@ function loadQuestLines() {
     filterQuestLine();
 }
 
+function refreshDebugRegions() {
+    const select = document.getElementById('pkdxRegionFilter');
+    const previous = select.value;
+    select.innerHTML = '<option value="all">All</option>';
+    // Rebuild on each reload so newly reached regions and their forms are selectable.
+    const regions = [...new Set(pokemonList.map(p => PokemonHelper.calcNativeRegion(p.name)))].filter(r => r <= player.highestRegion()).sort((a, b) => a - b);
+    for (const id of regions) {
+        const region = GameConstants.Region[id] || 'none';
+        const option = document.createElement('option');
+        option.value = region;
+        option.textContent = region.charAt(0).toUpperCase() + region.slice(1);
+        select.append(option);
+    }
+    select.value = [...select.options].some(option => option.value === previous) ? previous : 'all';
+}
+
+function debugEscape(value) {
+    return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
+
+function debugInventoryBalance(item) {
+    // Shop transactions that grant Pokémon, balls, berries or unlocks are not
+    // ordinary player.itemList inventories. Their dedicated controls are explicit.
+    const transactions = [
+        typeof PokemonItem === 'function' ? PokemonItem : null,
+        typeof PokeballItem === 'function' ? PokeballItem : null,
+        typeof BuyKeyItem === 'function' ? BuyKeyItem : null,
+    ];
+    if (transactions.some(type => type && item instanceof type)) return null;
+    // BerryItem and BuyOakItem are module-private in 0.10.26. Identify their
+    // public catalog references instead of relying on nonexistent globals.
+    if (Number.isInteger(item.berry) && typeof BerryType[item.berry] === 'string'
+        && item.name === `${BerryType[item.berry]}Berry`) return null;
+    const oakItem = Number.isInteger(item.item) ? App.game.oakItems?.itemList?.[item.item] : null;
+    if (oakItem && oakItem.name === item.item && typeof oakItem.purchased === 'boolean') return null;
+    if (typeof MulchItem === 'function' && item instanceof MulchItem) return App.game.farming.mulchList[item.type];
+    if (typeof ShovelItem === 'function' && item instanceof ShovelItem) return App.game.farming.shovelAmt;
+    if (typeof MulchShovelItem === 'function' && item instanceof MulchShovelItem) return App.game.farming.mulchShovelAmt;
+    return player.itemList[item.name];
+}
+
+function debugCatalog(kind) {
+    const game = App.game;
+    const list = (values, names, image, gain) => Object.entries(values || {}).filter(([id, balance]) => Number(id) >= 0 && typeof balance === 'function' && names[id]).map(([id, balance]) => ({ key: id, name: names[id], image: image(names[id]), balance, gain: amount => gain(Number(id), amount) }));
+    switch (kind) {
+        case 'currency': return list(game.wallet?.currencies, GameConstants.Currency, name => `assets/images/currency/${name}.svg`, (id, amount) => game.wallet.addAmount(new Amount(amount, id), true));
+        case 'gems': return list(game.gems?.gemWallet, PokemonType, name => `assets/images/gems/${name} Gem.png`, (id, amount) => game.gems.gainGems(amount, id));
+        case 'pokeballs': return list((game.pokeballs?.pokeballs || []).map(ball => ball.quantity), GameConstants.Pokeball, name => `assets/images/pokeball/${name}.svg`, (id, amount) => game.pokeballs.gainPokeballs(id, amount, false));
+        case 'berries': return list(game.farming?.berryInventory, BerryType, name => `assets/images/items/berry/${name}.png`, (id, amount) => game.farming.gainBerry(id, amount, false));
+        case 'keyItems': return (game.keyItems?.itemList || []).map(item => ({ key: String(item.id), name: item.displayName || KeyItemType[item.id]?.replaceAll('_', ' ') || item.name, gain: () => game.keyItems.gainKeyItem(item.id), unlocked: () => item.isUnlocked() }));
+        case 'underground': return (typeof UndergroundItems === 'undefined' ? [] : UndergroundItems.list).filter(item => typeof player.itemList[item.itemName] === 'function').map(item => ({ key: String(item.id), name: item.displayName || item.itemName.replaceAll('_', ' '), image: item.image, balance: player.itemList[item.itemName], gain: amount => UndergroundController.gainMineItem(item.id, amount) }));
+        default: return Object.entries(ItemList).filter(([key, item]) => {
+            if (typeof item.gain !== 'function' || typeof debugInventoryBalance(item) !== 'function') return false;
+            if (kind === 'heldItems') return item instanceof HeldItem;
+            if (kind === 'evolutionitems') return Number.isInteger(GameConstants.StoneType[key]) && GameConstants.StoneType[key] >= 0;
+            if (kind === 'vitamins') return Number.isInteger(GameConstants.VitaminType[key]) && GameConstants.VitaminType[key] >= 0;
+            return kind === 'items';
+        }).map(([key, item]) => ({ key, name: item.displayName || item.name.replaceAll('_', ' '), image: item.image, balance: debugInventoryBalance(item), gain: amount => item.gain(amount), vitamin: Number.isInteger(GameConstants.VitaminType[key]) && GameConstants.VitaminType[key] >= 0 }));
+    }
+}
+
+function debugApply(kind, key, input, operation) {
+    const status = document.getElementById('debug-cheats-status');
+    const report = message => { status.textContent = message; };
+    const resource = debugCatalog(kind).find(item => item.key === key);
+    if (!resource) return report('This resource is unavailable.');
+    if (kind === 'keyItems') {
+        if (resource.unlocked()) return report(`${resource.name} is already unlocked.`);
+        resource.gain();
+        return report(`${resource.name} unlocked.`);
+    }
+    const amount = typeof input === 'string' && input.trim() !== '' ? Number(input) : NaN;
+    if (!Number.isSafeInteger(amount) || amount < 0 || (amount === 0 && operation !== 'repair')) return report('Enter a positive, finite whole amount within the safe integer range.');
+    if (kind !== 'currency' && amount > 1000000) return report('Inventory grants are limited to 1,000,000 per click.');
+    const before = resource.balance();
+    const validBalance = Number.isFinite(before) && before >= 0 && before <= Number.MAX_SAFE_INTEGER;
+    if (kind === 'currency' && operation === 'repair') {
+        if (validBalance) return report('This balance is valid. Repair only replaces invalid balances.');
+        // An explicit repair replaces only the selected corrupt balance, without inventing earned statistics.
+        resource.balance(amount);
+        return report(`${resource.name} repaired to ${amount}.`);
+    }
+    if (!validBalance) return report('Invalid balance. Currency balances can be replaced using Repair invalid balance.');
+    if (kind === 'currency' && operation === 'subtract') {
+        const remove = Math.min(before, amount);
+        if (remove > 0) App.game.wallet.loseAmount(new Amount(remove, Number(key)));
+        return report(`Removed ${remove} ${resource.name}.`);
+    }
+    if (operation !== 'add' || !Number.isFinite(before + amount) || before + amount > Number.MAX_SAFE_INTEGER || before + amount <= before) return report('The resulting total is outside the safe range.');
+    // Native gain methods also increment lifetime totals. Refuse an unsafe addition
+    // before either inventory or statistics is touched.
+    const statistics = App.game.statistics;
+    let totals = [];
+    if (statistics) {
+        if (kind === 'currency') {
+            const names = { money: 'totalMoney', dungeonToken: 'totalDungeonTokens', questPoint: 'totalQuestPoints', diamond: 'totalDiamonds', farmPoint: 'totalFarmPoints', battlePoint: 'totalBattlePoints', contestToken: 'totalContestTokens' };
+            totals = [statistics[names[GameConstants.Currency[key]]]];
+        } else if (kind === 'gems') totals = [statistics.totalGemsGained, statistics.gemsGained?.[key]];
+        else if (kind === 'pokeballs') totals = [statistics.pokeballsObtained?.[key]];
+        else if (kind === 'berries') totals = [statistics.totalBerriesObtained, statistics.berriesObtained?.[key]];
+        else if (resource.vitamin) totals = [statistics.totalVitaminsObtained, statistics.totalVitaminsPurchased];
+    }
+    if (totals.some(total => typeof total === 'function' && (!Number.isFinite(total()) || total() < 0 || total() + amount > Number.MAX_SAFE_INTEGER))) return report('A lifetime statistic is invalid or would exceed the safe range. Nothing was added.');
+    resource.gain(amount);
+    report(`Applied ${resource.balance() - before} to ${resource.name}.`);
+}
+
 function initSaveEditor() {
-    window.gainPk = gainPk;
-    window.gainPkrs = gainPkrs;
-    window.loadPkdx = loadPkdx;
-    window.filterPkdx = filterPkdx;
-    window.loadQuestLines = loadQuestLines;
-    window.filterQuestLine = filterQuestLine;
+    if (document.getElementById('saveEditorModal')) return;
+    const profileDrop = document.getElementById('startMenu')?.querySelector('ul li');
+    const profileModal = document.getElementById('profileModal');
+    if (!profileDrop || !profileModal) return;
 
     // Add menu item
     let eventLi = document.createElement('li');
@@ -250,12 +360,16 @@ function initSaveEditor() {
                         <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#evolutionitems">Evolution Items</a></li>
                         <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#vitamins">Vitamins</a></li>
                         <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#heldItems">Held items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#items">All Items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#underground">Underground</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#keyItems">Key Items</a></li>
                         <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#pokedex">Pokedex</a></li>
                         <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#questlines">Quests</a></li>
                     </ul>
                     <div class="tab-content">
                         <div id="currency" class="tab-pane p-3 active">
-                            <p>Click on button to add money (input * achievement bonus)</p>
+                            <p>Choose an operation, enter a whole amount, then click a currency. Add grants the exact amount without bonuses. Subtract stops at zero. Repair only replaces an invalid balance with your entered value.</p>
+                            <select class="custom-select" data-debug-operation aria-label="Currency operation"><option value="add">Add</option><option value="subtract">Subtract</option><option value="repair">Repair invalid balance</option></select>
                             <input id="inputAddCurrency" class="form-control" type="number" placeholder="1000000" value="1000000" min="0">
                         </div>
                         <div id="gems" class="tab-pane p-3">
@@ -282,23 +396,26 @@ function initSaveEditor() {
                             <p>On click add held items items (input)</p>
                             <input id="inputAddHeldItems" class="form-control" type="number" placeholder="100" value="100" min="0">
                         </div>
+                        <div id="items" class="tab-pane p-3"><p>Grant an item through its native gain method. Unique items keep their native limits.</p><input id="inputAddItems" aria-label="Item amount" class="form-control" type="number" value="100" min="1"></div>
+                        <div id="underground" class="tab-pane p-3"><p>Grant an Underground item.</p><input id="inputAddUnderground" aria-label="Underground amount" class="form-control" type="number" value="100" min="1"></div>
+                        <div id="keyItems" class="tab-pane p-3"><p>Click a key item to unlock it. Unlocking can trigger the game's rewards and progression.</p></div>
                         <div id="pokedex" class="tab-pane p-3">
                             <p><b>You can break your game, please backup!</b></br><i>Do not complete pokedex from another region if you are not in the region you will not be able to go to the next region!</i></p>
-                            <button class="btn btn-primary btn-block" onclick="loadPkdx()">(Re)Load Data</button>
+                            <button class="btn btn-primary btn-block" data-debug-action="loadPkdx">(Re)Load Data</button>
                             <div class="form-row text-left">
                                 <div class="form-group col-md-6 col-6">
                                     <label for="pkdxNameFilter">Name</label>
-                                    <input id="pkdxNameFilter" class="form-control" placeholder="Bulbasaur" value="" oninput="filterPkdx()">
+                                    <input id="pkdxNameFilter" class="form-control" placeholder="Bulbasaur" value="" data-debug-filter="pokedex">
                                 </div>
                                 <div class="form-group col-md-6 col-6">
                                     <label for="pkdxRegionFilter">Region</label>
-                                    <select id="pkdxRegionFilter" class="custom-select" oninput="filterPkdx()" style="margin-right: 8px">
+                                    <select id="pkdxRegionFilter" class="custom-select" data-debug-filter="pokedex" style="margin-right: 8px">
                                         <option value="all" selected="true">All</option>
                                     </select>
                                 </div>
                                 <div class="form-group col-md-6 col-6">
                                     <label for="pkdxShinyFilter">Caught Status</label>
-                                    <select id="pkdxShinyFilter" autocomplete="off" class="custom-select" onchange="filterPkdx()">
+                                    <select id="pkdxShinyFilter" autocomplete="off" class="custom-select" data-debug-filter="pokedex">
                                         <option value="all" selected="">All</option>
                                         <option value="uncaught">Uncaught</option>
                                         <option value="caught">Caught</option>
@@ -308,7 +425,7 @@ function initSaveEditor() {
                                 </div>
                                 <div class="form-group col-md-6 col-6">
                                     <label for="pkdxPKRSFilter">Pokerus Status</label>
-                                    <select id="pkdxPKRSFilter" autocomplete="off" class="custom-select" onchange="filterPkdx()">
+                                    <select id="pkdxPKRSFilter" autocomplete="off" class="custom-select" data-debug-filter="pokedex">
                                         <option value="-1" selected="true">All</option>
                                         <option value="0">Uninfected</option>
                                         <option value="2">Contagious</option>
@@ -333,11 +450,11 @@ function initSaveEditor() {
                             </table>
                         </div>
                         <div id="questlines" class="tab-pane p-3">
-                            <button class="btn btn-primary btn-block" onclick="loadQuestLines()">(Re)Load Data</button>
+                            <button class="btn btn-primary btn-block" data-debug-action="loadQuestLines">(Re)Load Data</button>
                             <div class="form-row text-left">
                                 <div class="form-group col-md-6 col-6">
                                     <label for="questLineFilter">Quest Status</label>
-                                    <select id="questLineFilter" autocomplete="off" class="custom-select" onchange="filterQuestLine()">
+                                    <select id="questLineFilter" autocomplete="off" class="custom-select" data-debug-filter="quests">
                                         <option value="all" selected="">All</option>
                                         <option value="inactive">Inactive</option>
                                         <option value="started">Started</option>
@@ -366,111 +483,62 @@ function initSaveEditor() {
 
     let modalBody = document.querySelector('[id=saveEditorModal] div div [class=modal-body]');
 
-    // currency
-    for (let i = 0; i < Object.keys(GameConstants.Currency).filter(isNaN).length; i++) {
-        const itm = GameConstants.Currency[i];
-        const itmPretty = itm.charAt(0).toUpperCase() + itm.replace(/[A-Z]/g, ' $&').trim().slice(1);
-        modalBody.querySelector('#currency').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="App.game.wallet.gain${itm.charAt(0).toUpperCase() + itm.slice(1)}${i > 0 ? "s" : ""}(parseInt(document.getElementById('inputAddCurrency').value || 0))">
-                <img title="${itmPretty}" src="assets/images/currency/${itm}.svg" height="25px">
-                <div>${itmPretty}</div>
-            </div>
-        `;
-    }
-
-    // gems
-    for (let i = 0; i < Gems.nTypes; i++) {
-        const itm = PokemonType[i];
-        modalBody.querySelector('#gems').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="App.game.gems.gainGems(parseInt(document.getElementById('inputAddGems').value || 0), ${i})">
-                <img title="${itm}" src="assets/images/gems/${itm} Gem.png" height="25px">
-                <div>${itm}</div>
-            </div>
-        `;
-    }
-
-    // pokeballs
-    for (let i = 0; i < Object.keys(GameConstants.Pokeball).filter(isNaN).length - 1; i++) {
-        const itm = GameConstants.Pokeball[i];
-        modalBody.querySelector('#pokeballs').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="App.game.pokeballs.gainPokeballs(${i}, parseInt(document.getElementById('inputAddPokeballs').value || 0), true)">
-                <img title="${itm}" src="assets/images/pokeball/${itm}.svg" height="25px">
-                <div>${itm}</div>
-            </div>
-        `;
-    }
-
-    // berries
-    for (let i = 0; i < Object.keys(BerryType).filter(isNaN).length - 1; i++) {
-        const itm = BerryType[i];
-        modalBody.querySelector('#berries').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="App.game.farming.gainBerry(${i}, parseInt(document.getElementById('inputAddBerries').value || 0), true)">
-                <img title="${itm}" src="assets/images/items/berry/${itm}.png" height="25px">
-                <div>${itm}</div>
-            </div>
-        `;
-    }
-
-    // evolutionitems
-    for (let i = 0; i < Object.keys(GameConstants.StoneType).filter(isNaN).length - 1; i++) {
-        const itm = GameConstants.StoneType[i];
-        const itmPretty = itm.replaceAll('_', ' ');
-        modalBody.querySelector('#evolutionitems').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="player.gainItem(ItemList['${itm}'].name, parseInt(document.getElementById('inputAddEvolutionItems').value || 0), true)">
-                <img title="${itmPretty}" src="assets/images/items/evolution/${itm}.png" height="25px">
-                <div>${itmPretty}</div>
-            </div>
-        `;
-    }
-
-    // vitamins
-    for (let i = 0; i < Object.keys(GameConstants.VitaminType).filter(isNaN).length; i++) {
-        const itm = GameConstants.VitaminType[i];
-        modalBody.querySelector('#vitamins').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="player.gainItem(ItemList['${itm}'].name, parseInt(document.getElementById('inputAddVitamins').value || 0), true)">
-                <img title="${itm}" src="assets/images/items/vitamin/${itm}.png" height="25px">
-                <div>${itm}</div>
-            </div>
-        `;
-    }
-
-    // heldItems
-    HeldItem.getSortedHeldItems().forEach((itm, idx) => {
-        const itmPretty = itm.name.replaceAll('_', ' ');
-        modalBody.querySelector('#heldItems').innerHTML += `
-            <div class="btn btn-primary col-2 item-bag-item" onclick="HeldItem.getSortedHeldItems()[${idx}].gain(parseInt(document.getElementById('inputAddHeldItems').value || 0))">
-                <img title="${itmPretty}" src="assets/images/items/heldItems/${itm.name}.png" height="25px">
-                <div>${itmPretty}</div>
-            </div>
-        `;
+    const status = document.createElement('p');
+    status.id = 'debug-cheats-status';
+    status.setAttribute('role', 'status');
+    modalBody.prepend(status);
+    const limits = document.createElement('p');
+    limits.className = 'small';
+    limits.textContent = 'Inventory grants: maximum 1,000,000 per click. Pokémon shop transactions are excluded. Use Pokédex actions to grant a Pokémon.';
+    modalBody.prepend(limits);
+    modalBody.querySelectorAll('.tab-pane input[type="number"]').forEach(input => {
+        input.step = '1';
+        if (input.id !== 'inputAddCurrency') input.max = '1000000';
     });
-
-    // pokedex
-    const pkdxRegFilt = modalBody.querySelector('#pkdxRegionFilter');
-    for (let i = 0; i <= player.highestRegion(); i++) {
-        const reg = GameConstants.Region[i]
-        pkdxRegFilt.innerHTML += `<option value="${reg}">${reg.charAt(0).toUpperCase() + reg.slice(1)}</option>`;
+    for (const kind of ['currency', 'gems', 'pokeballs', 'berries', 'evolutionitems', 'vitamins', 'heldItems', 'items', 'underground', 'keyItems']) {
+        for (const resource of debugCatalog(kind)) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-primary col-2 item-bag-item';
+            button.dataset.debugKind = kind;
+            button.dataset.debugKey = resource.key;
+            if (resource.image) {
+                const image = document.createElement('img');
+                image.src = resource.image;
+                image.height = 25;
+                image.alt = '';
+                button.append(image);
+            }
+            const label = document.createElement('div');
+            label.textContent = resource.name;
+            button.append(label);
+            modalBody.querySelector(`#${kind}`).append(button);
+        }
     }
+
+    refreshDebugRegions();
+
+    // Closures survive both the Desktop wrapper and Tampermonkey's isolated scope.
+    eventMod.addEventListener('click', event => {
+        const button = event.target.closest('[data-debug-kind], [data-debug-action]');
+        if (!button || !eventMod.contains(button)) return;
+        if (button.dataset.debugKind) {
+            const pane = button.closest('.tab-pane');
+            debugApply(button.dataset.debugKind, button.dataset.debugKey,
+                pane.querySelector('input[type="number"]')?.value,
+                pane.querySelector('[data-debug-operation]')?.value || 'add');
+            return;
+        }
+        const actions = { loadPkdx, loadQuestLines, gainPk, gainPkrs };
+        actions[button.dataset.debugAction]?.(Number(button.dataset.debugId));
+    });
+    const filter = event => {
+        if (event.target.dataset.debugFilter === 'pokedex') filterPkdx();
+        if (event.target.dataset.debugFilter === 'quests') filterQuestLine();
+    };
+    eventMod.addEventListener('input', filter);
+    eventMod.addEventListener('change', filter);
 }
-
-/* WIP, sevii helper
-var lst = pokemonList.filter((p) => p.name.includes('Pinkan')
-    || p.name.includes('Valencian')
-    || p.name === 'Crystal Onix'
-    || p.name === 'Ash\'s Butterfree'
-    || p.name === 'Pink Butterfree');
-var caught = App.game.party.caughtPokemon
-    .filter((p) => p.name.includes('Pinkan')
-    || p.name.includes('Valencian')
-    || p.name === 'Crystal Onix'
-    || p.name === 'Ash\'s Butterfree'
-    || p.name === 'Pink Butterfree');
-
-var caughtNames = caught.map(e => e.name);
-var missing = lst.filter(e => !caughtNames.includes(e.name));
-
-console.log(missing);
-*/
 
 function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     function reportScriptError(scriptName, error) {

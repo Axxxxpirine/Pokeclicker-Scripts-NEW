@@ -5,7 +5,7 @@
 // @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.2.0
+// @version       3.3.0
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -28,6 +28,11 @@ var fossilState;
 var shinyFossilState;
 var pkrsState;
 var filterOnlyState;
+var autoQueueState;
+var autoQueueLimit;
+var typeEfficiencyState;
+var hatcheryTargetType1;
+var hatcheryTargetType2;
 var priorityIdList = [];
 var priorityCursor = 0;
 var priorityLastMonIds = new Map();
@@ -92,6 +97,7 @@ function initAutoHatch() {
     document.getElementById('priority-save').addEventListener('click', savePriorityFromInput);
     loadPriorityIds();
     renderPriorityIds();
+    initHatcheryQueueOptions(autoHatchControls);
 
     addGlobalStyle('.eggSlot.disabled { pointer-events: unset !important; }');
 
@@ -246,6 +252,10 @@ function autoHatcher() {
         }
     }
 
+    // Native progress processes the existing queue first. Do not jump ahead of a
+    // manually queued entry when Auto Hatch is toggled between progress ticks.
+    if (typeof App.game.breeding.queueList === 'function' && App.game.breeding.queueList().length && App.game.breeding.hasFreeEggSlot()) return;
+
     // Always yield to the game clock, even if an item reports success without filling a slot.
     for (let attempts = 0; attempts < App.game.breeding.eggSlots && App.game.breeding.hasFreeEggSlot(); attempts++) {
         // Attempts enabled autoHatch methods in order until one succeeds
@@ -258,6 +268,7 @@ function autoHatcher() {
             break;
         }
     }
+    fillAutoHatchQueue();
 }
 
 function autoHatchPkrs() {
@@ -352,13 +363,117 @@ function autoHatchFossil() {
     return false;
 }
 
-function autoHatchMon() {
-    const filtered = autoHatcheryCachedList.filter(p => p.isHatchable() && matchesAutoHatchFilter(p));
-    const party = App.game.party.caughtPokemon.filter(p => p.isHatchable() && matchesAutoHatchFilter(p));
+function autoHatchOccupiedIds() {
+    const breeding = App.game.breeding;
+    const ids = new Set();
+    if (typeof breeding.queueList === 'function' && typeof EggType !== 'undefined') {
+        breeding.queueList().forEach(entry => { if (entry[0] === EggType.Pokemon) ids.add(entry[1]); });
+    }
+    (breeding.eggList || []).forEach(slot => {
+        const egg = slot();
+        if (egg && !egg.isNone() && Number.isFinite(egg.pokemon)) ids.add(egg.pokemon);
+    });
+    return ids;
+}
+
+function fillAutoHatchQueue() {
+    // Queue entries may start before the next script tick. Only enqueue ordinary
+    // breeding while modes that need immediate paired/random decisions are off.
+    if (!hatchState || !autoQueueState || pkrsState || eggState) return;
+    const breeding = App.game.breeding;
+    if (typeof breeding.queueList !== 'function' || typeof breeding.usableQueueSlots !== 'function' || typeof breeding.addPokemonToQueue !== 'function' || typeof EggType === 'undefined') return;
+    const capacity = breeding.usableQueueSlots();
+    if (!Number.isSafeInteger(capacity) || capacity <= 0) return;
+    const target = Math.min(capacity, autoQueueLimit);
+    // Never remove or reorder existing entries, including after lowering a limit.
+    for (let attempt = 0; attempt < target && breeding.queueList().length < target; attempt++) {
+        const previousLength = breeding.queueList().length;
+        if (!autoHatchMon(true) || breeding.queueList().length <= previousLength) break;
+    }
+}
+
+function sortAutoHatchEfficiency(list) {
+    if (!typeEfficiencyState || typeof TypeHelper === 'undefined' || typeof TypeHelper.getAttackModifier !== 'function' || typeof BreedingController.calculateRegionalMultiplier !== 'function' || typeof PokemonHelper === 'undefined' || typeof PokemonHelper.getPokemonById !== 'function') return list;
+    const scores = new Map();
+    for (const pokemon of list) {
+        const data = PokemonHelper.getPokemonById(pokemon.id);
+        if (!data || !Number.isInteger(data.type1) || !Number.isInteger(data.type2) || typeof pokemon.breedingEfficiency !== 'function') return list;
+        const score = pokemon.breedingEfficiency() * BreedingController.calculateRegionalMultiplier(pokemon)
+            * TypeHelper.getAttackModifier(data.type1, data.type2, hatcheryTargetType1, hatcheryTargetType2);
+        if (!Number.isFinite(score) || score < 0) return list;
+        scores.set(pokemon, score);
+    }
+    // Stable sort keeps the game's ordering for ties. Priority rotation still
+    // chooses the next family before considering ordinary candidates.
+    return [...list].sort((a, b) => scores.get(b) - scores.get(a));
+}
+
+function initHatcheryQueueOptions(container) {
+    const options = document.createElement('div');
+    options.className = 'd-flex flex-wrap align-items-center w-100';
+    options.style.gap = '8px';
+    options.innerHTML = `<button id="auto-queue" type="button" class="btn"></button>
+        <label for="auto-queue-limit" class="mb-0">Queue target (1–100)</label>
+        <input id="auto-queue-limit" type="number" class="form-control form-control-sm" style="width:90px" min="1" max="100" step="1">
+        <small class="w-100">Requires Auto Hatch. Appends eligible Pokémon up to this total or the native capacity. Existing entries remain in order. Paused while PKRS Mode or Auto Egg is ON. Turning OFF or changing filters leaves previously queued entries intact.</small>
+        <button id="hatchery-type-sort" type="button" class="btn"></button>
+        <label for="hatchery-target-type1" class="mb-0">Target type</label><select id="hatchery-target-type1" class="custom-select custom-select-sm" style="width:110px"></select>
+        <label for="hatchery-target-type2" class="mb-0">Second type</label><select id="hatchery-target-type2" class="custom-select custom-select-sm" style="width:110px"></select>
+        <small class="w-100">Type efficiency = native breeding efficiency × hatchery regional multiplier × native attack modifier against the selected target types (including gems). Native efficiency = attack gained ÷ egg steps × egg-cycle multiplier, using the game's modifier setting. Weather and temporary attack boosts are excluded. Higher scores go first within eligible candidates. PKRS and priority rotation still take precedence.</small>
+        <small id="hatchery-queue-status" class="w-100" role="status"></small>`;
+    container.append(options);
+    const render = () => {
+        for (const [id, label, enabled] of [['auto-queue', 'Auto Queue', autoQueueState], ['hatchery-type-sort', 'Type Efficiency', typeEfficiencyState]]) {
+            const button = document.getElementById(id);
+            button.className = `btn btn-${enabled ? 'success' : 'danger'}`;
+            button.textContent = `${label} [${enabled ? 'ON' : 'OFF'}]`;
+            button.setAttribute('aria-pressed', String(enabled));
+        }
+    };
+    document.getElementById('auto-queue').addEventListener('click', () => { autoQueueState = !autoQueueState; localStorage.setItem('autoHatchQueue', autoQueueState); render(); });
+    document.getElementById('hatchery-type-sort').addEventListener('click', () => { typeEfficiencyState = !typeEfficiencyState; localStorage.setItem('autoHatchTypeSort', typeEfficiencyState); render(); });
+    const limit = document.getElementById('auto-queue-limit');
+    limit.value = autoQueueLimit;
+    limit.addEventListener('change', () => {
+        const next = Number(limit.value);
+        const status = document.getElementById('hatchery-queue-status');
+        if (!Number.isInteger(next) || next < 1 || next > 100) {
+            limit.value = autoQueueLimit;
+            status.textContent = 'Enter a whole queue target from 1 to 100. Previous target retained.';
+            return;
+        }
+        autoQueueLimit = next;
+        localStorage.setItem('autoHatchQueueLimit', next);
+        status.textContent = 'Queue target saved. Existing entries are preserved.';
+    });
+    const types = typeof PokemonType === 'undefined' ? [] : Object.entries(PokemonType).filter(([name, id]) => typeof id === 'number' && id >= 0);
+    if (!types.some(([, id]) => id === hatcheryTargetType1)) hatcheryTargetType1 = types[0]?.[1] ?? 0;
+    if (!types.some(([, id]) => id === hatcheryTargetType2)) hatcheryTargetType2 = -1;
+    for (const secondary of [false, true]) {
+        const select = document.getElementById(secondary ? 'hatchery-target-type2' : 'hatchery-target-type1');
+        for (const [name, id] of secondary ? [['None', -1], ...types] : types) {
+            const option = document.createElement('option'); option.value = id; option.textContent = name; select.append(option);
+        }
+        select.value = secondary ? hatcheryTargetType2 : hatcheryTargetType1;
+        select.addEventListener('change', () => {
+            const value = Number(select.value);
+            if (secondary) hatcheryTargetType2 = value; else hatcheryTargetType1 = value;
+            localStorage.setItem(secondary ? 'autoHatchTargetType2' : 'autoHatchTargetType1', value);
+        });
+    }
+    render();
+}
+
+function autoHatchMon(enqueue = false) {
+    const occupied = autoHatchOccupiedIds();
+    const eligible = p => p.isHatchable() && !occupied.has(p.id) && matchesAutoHatchFilter(p);
+    const filtered = sortAutoHatchEfficiency(autoHatcheryCachedList.filter(eligible));
+    const party = sortAutoHatchEfficiency(App.game.party.caughtPokemon.filter(eligible));
+    const submit = pokemon => enqueue ? App.game.breeding.addPokemonToQueue(pokemon) : App.game.breeding.addPokemonToHatchery(pokemon);
     const isPriority = p => priorityIdList.some(id => priorityMatches(p, id));
     const normal = filtered.find(p => !isPriority(p)) || (!filterOnlyState && party.find(p => !isPriority(p)));
     // Give other eligible Pokémon a turn between priorities, even across game ticks.
-    if (priorityNeedsNormalTurn && normal && App.game.breeding.addPokemonToHatchery(normal)) {
+    if (priorityNeedsNormalTurn && normal && submit(normal)) {
         priorityNeedsNormalTurn = false;
         return true;
     }
@@ -368,7 +483,7 @@ function autoHatchMon() {
         const family = party.filter(p => priorityMatches(p, id));
         const lastIndex = family.findIndex(p => p.id === priorityLastMonIds.get(id));
         const mon = family[(lastIndex + 1) % family.length];
-        if (mon && App.game.breeding.addPokemonToHatchery(mon)) {
+        if (mon && submit(mon)) {
             priorityLastMonIds.set(id, mon.id);
             priorityCursor = (index + 1) % priorityIdList.length;
             priorityNeedsNormalTurn = true;
@@ -377,7 +492,7 @@ function autoHatchMon() {
     }
     const toHatch = filtered[0] || (!filterOnlyState && party[0]);
     if (!toHatch) return false;
-    const success = App.game.breeding.addPokemonToHatchery(toHatch);
+    const success = submit(toHatch);
     if (success) priorityNeedsNormalTurn = false;
     return success;
 }
@@ -388,6 +503,12 @@ fossilState = loadSetting('autoFossil', false);
 shinyFossilState = loadSetting('shinyFossil', false);
 pkrsState = loadSetting('pokerusModeState', false);
 filterOnlyState = loadSetting('filterOnly', false);
+autoQueueState = loadSetting('autoHatchQueue', false);
+autoQueueLimit = loadSetting('autoHatchQueueLimit', 10);
+if (!Number.isInteger(autoQueueLimit) || autoQueueLimit < 1 || autoQueueLimit > 100) autoQueueLimit = 10;
+typeEfficiencyState = loadSetting('autoHatchTypeSort', false);
+hatcheryTargetType1 = loadSetting('autoHatchTargetType1', 0);
+hatcheryTargetType2 = loadSetting('autoHatchTargetType2', -1);
 
 function loadSetting(key, defaultVal) {
     var val;

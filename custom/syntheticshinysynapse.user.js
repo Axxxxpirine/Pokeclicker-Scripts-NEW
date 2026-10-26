@@ -7,10 +7,10 @@
 // @license       GPL-3.0 License
 // @version       1.5.3
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/syntheticshinysynapse.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/syntheticshinysynapse.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/syntheticshinysynapse.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/syntheticshinysynapse.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
@@ -18,14 +18,12 @@
 // @run-at        document-idle
 // ==/UserScript==
 
-const genSource = ['generateWildPokemon', //Wild Pokemon
-                   'generateDungeonPokemon', //Dungeon Pokemon
-                   'evolve', //Evolution Pokemon
-                   'new', //Safari Pokemon
-                   'claimFunction', //Shop/Claim/Gift Pokemon
-                   'hatch', //Breeding/Eggs
-                   'generateWanderPokemon', //Wandering/Farm Pokemon
-                  ];
+// Keep these seven categories in their legacy storage order. Several native rates
+// are equal, and newer constants must not shift the saved array indices.
+const shinyTypeNames = ['SHINY_CHANCE_BATTLE', 'SHINY_CHANCE_DUNGEON',
+    'SHINY_CHANCE_STONE', 'SHINY_CHANCE_SAFARI', 'SHINY_CHANCE_SHOP',
+    'SHINY_CHANCE_BREEDING', 'SHINY_CHANCE_FARM'];
+const maxShinyRate = Number.MAX_SAFE_INTEGER;
 const genDesc = ['Wild Pokémon shiny odds:',
                  'Dungeon Pokémon shiny odds:',
                  'Evolution Stone Pokémon shiny odds:',
@@ -44,6 +42,8 @@ var karmaRates;
 var shinyDOMUpdate;
 
 function initShinySynapse() {
+    if (document.getElementById('shinyModal')) return;
+    loadShinySettings();
     getShinyRates();
 
     const profileModal = document.getElementById('profileModal');
@@ -124,11 +124,13 @@ function initShinySynapse() {
     globalBtn.textContent = 'Modify';
     globalBtn.setAttribute('class', 'btn btn-sm btn-success');
     globalBtn.addEventListener('click', event => {
-        const rate = +document.getElementById('shiny-modifier-global').value.replace(/[A-Za-z!@#$%^&*()]/g, '').replace(/[,]/g, "");
+        const rate = readShinyInput(document.getElementById('shiny-modifier-global'));
+        if (rate === null) return;
         const shinyMulti = App.game.multiplier.getBonus('shiny');
         globalShinyRate = rate;
         document.getElementById('shiny-charm-rate-global').textContent = (globalShinyRate / shinyMulti);
         localStorage.setItem("globalShinyRate", JSON.stringify(globalShinyRate));
+        syncShinyHooks();
     });
     global.appendChild(globalBtn);
 
@@ -156,12 +158,14 @@ function initShinySynapse() {
         btn.setAttribute('data-src', i);
         btn.addEventListener('click', event => {
             const index = +event.target.getAttribute('data-src');
-            const rate = +document.getElementById(`shiny-modifier-${index}`).value.replace(/[A-Za-z!@#$%^&*()]/g, '').replace(/[,]/g, "");
+            const rate = readShinyInput(document.getElementById(`shiny-modifier-${index}`));
+            if (rate === null) return;
             const shinyMulti = App.game.multiplier.getBonus('shiny');
             shinyRates[index] = rate;
             prefShinyRates[index] = rate;
             document.getElementById(`shiny-charm-rate-${index}`).textContent = (prefShinyRates[index] / shinyMulti);
             localStorage.setItem("shinySetRates", JSON.stringify(prefShinyRates));
+            syncShinyHooks();
         });
         div.appendChild(btn);
 
@@ -169,45 +173,108 @@ function initShinySynapse() {
     }
     modalBody.appendChild(fragment);
 
-    PokemonFactory.generateShiny = function (chance, skipBonus = false) {
-        let genType;
-        try {
-            const split = (new Error()).stack.split("\n")[2].trim().split(" ");
-            genType = split[split.length - 2].replace(/^(.*?)[.]/, '');
-        } catch (err) {
-            genType = (new Error()).stack.split("\n")[1].trim().split(" ")[0].replace(/@(.*?)$/, '');
-        }
-        const index = genType == 'generateDungeonBoss' ? 1 : genSource.indexOf(genType);
+    let sourceIndex = -1;
+    let hookRecords = [];
+    let hooksEnabled = false;
+    let hookGeneration;
 
-        let trueChance;
-        if (karmaMode) {
-            trueChance = karmaRates[index];
-            karmaRates[index] = karmaRates[index] - 1;
-            localStorage.setItem('shinyKarmaRates', JSON.stringify(karmaRates));
-        }
-        else if (globalShinyState) {
-            trueChance = globalShinyRate;
-        } else if (prefShinyRates[index]) {
-            trueChance = prefShinyRates[index];
-        } else {
-            trueChance = chance;
-        }
+    // Native calls are synchronous. Scope the context to each source and restore
+    // it even on failure. SafariPokemon.random is the game's constructor entry
+    // point, and Egg.hatch also covers its separate baby-Pokémon shiny roll.
+    function hookSource(target, method, index) {
+        if (!target || typeof target[method] !== 'function') return;
+        const original = target[method];
+        const ownDescriptor = Object.getOwnPropertyDescriptor(target, method);
+        const generation = hookGeneration;
+        const wrapper = function (...args) {
+            if (!hooksEnabled || generation !== hookGeneration) return original.apply(this, args);
+            const previous = sourceIndex;
+            sourceIndex = index;
+            try {
+                return original.apply(this, args);
+            } finally {
+                sourceIndex = previous;
+            }
+        };
+        target[method] = wrapper;
+        hookRecords.push({ target, method, original, wrapper, ownDescriptor });
+    }
 
-        const bonus = skipBonus ? 1 : App.game.multiplier.getBonus('shiny');
-
-        if (Rand.chance(trueChance / bonus)) {
+    function syncShinyHooks() {
+        const enabled = karmaMode || globalShinyState || prefShinyRates.some(rate => rate !== null);
+        if (enabled === hooksEnabled) return;
+        hooksEnabled = enabled;
+        if (!enabled) {
+            for (const { target, method, wrapper, ownDescriptor } of hookRecords.reverse()) {
+                // Do not overwrite another script's later wrapper.
+                if (target[method] !== wrapper) continue;
+                if (ownDescriptor) Object.defineProperty(target, method, ownDescriptor);
+                else delete target[method];
+            }
+            hookRecords = [];
+            return;
+        }
+        const generation = hookGeneration = {};
+        const nativeGenerateShiny = PokemonFactory.generateShiny;
+        const ownDescriptor = Object.getOwnPropertyDescriptor(PokemonFactory, 'generateShiny');
+        const wrapper = function (chance, skipBonus = false) {
+            if (!hooksEnabled || generation !== hookGeneration) return nativeGenerateShiny.apply(this, arguments);
+            let index = sourceIndex;
+            if (index < 0) {
+                // Only unique native signatures are safe outside an explicit
+                // source. Safari, eggs, farm and rewards all use 1024 in 0.10.26.
+                const matches = Object.keys(GameConstants).filter(key =>
+                    key.startsWith('SHINY_CHANCE_') && GameConstants[key] === chance);
+                index = matches.length === 1 ? shinyTypes.indexOf(matches[0]) : -1;
+            }
+            const nativeChance = Number.isFinite(chance) && chance > 0 ? Math.min(maxShinyRate, chance) : GameConstants.SHINY_CHANCE_BATTLE;
+            let rate = nativeChance;
+            let overridden = false;
             if (karmaMode) {
-                karmaRates[index] = GameConstants[shinyTypes[index]]
+                if (index >= 0) { rate = karmaRates[index]; overridden = true; }
+            } else if (globalShinyState) {
+                rate = globalShinyRate;
+                overridden = true;
+            } else if (index >= 0 && prefShinyRates[index] !== null) {
+                rate = prefShinyRates[index];
+                overridden = true;
+            }
+            // Apply the native bonus once, then let the native generator own the
+            // random draw and Shiny Charm use. Egg chances already include bonuses.
+            const nativeBonus = skipBonus ? 1 : App.game.multiplier.getBonus('shiny');
+            const bonus = Number.isFinite(nativeBonus) && nativeBonus > 0 ? nativeBonus : 1;
+            // Egg.updateShinyChance stores a weighted history of step bonuses.
+            // Replacing its base odds must retain that history, not discard it
+            // or apply today's multiplier again. Baby rolls use skipBonus=false.
+            const eggFactor = overridden && index === 5 && skipBonus
+                ? nativeChance / GameConstants.SHINY_CHANCE_BREEDING : 1;
+            const denominator = Math.max(1, Math.min(maxShinyRate, (rate / bonus) * eggFactor));
+            const shiny = nativeGenerateShiny.call(this, denominator, true);
+            if (karmaMode && index >= 0) {
+                karmaRates[index] = shiny ? GameConstants[shinyTypes[index]] : Math.max(1, rate - 1);
                 localStorage.setItem('shinyKarmaRates', JSON.stringify(karmaRates));
             }
-            App.game.oakItems.use(OakItemType.Shiny_Charm);
-            return true;
-        }
-        if (shinyDOMUpdate && $('#shinyModal').is(':visible')) {
-            updateShinyModal();
-        }
-        return false;
+            if (shinyDOMUpdate && $('#shinyModal').is(':visible')) updateShinyModal();
+            return shiny;
+        };
+        PokemonFactory.generateShiny = wrapper;
+        hookRecords.push({ target: PokemonFactory, method: 'generateShiny', wrapper, ownDescriptor });
+        hookSource(PokemonFactory, 'generateWildPokemon', 0);
+        hookSource(PokemonFactory, 'generateDungeonPokemon', 1);
+        hookSource(PokemonFactory, 'generateDungeonBoss', 1);
+        hookSource(PokemonFactory, 'generateDungeonTrainerPokemon', 1);
+        hookSource(typeof EvolutionHandler === 'undefined' ? null : EvolutionHandler, 'evolve', 2);
+        hookSource(typeof SafariPokemon === 'undefined' ? null : SafariPokemon, 'random', 3);
+        hookSource(typeof Player === 'undefined' ? null : Player.prototype, 'pickStarter', 4);
+        hookSource(typeof PokemonItem === 'undefined' ? null : PokemonItem.prototype, 'gain', 4);
+        hookSource(typeof DiscordCode === 'undefined' ? null : DiscordCode.prototype, 'claim', 4);
+        hookSource(typeof GiftNPC === 'undefined' ? null : GiftNPC.prototype, 'acceptGift', 4);
+        hookSource(typeof Quest === 'undefined' ? null : Quest.prototype, 'claim', 4);
+        hookSource(typeof BattleFrontierMilestone === 'undefined' ? null : BattleFrontierMilestone.prototype, 'gain', 4);
+        hookSource(typeof Egg === 'undefined' ? null : Egg.prototype, 'hatch', 5);
+        hookSource(PokemonFactory, 'generateWandererData', 6);
     }
+    syncShinyHooks();
 
     addGlobalStyle('#shiny-modifier-head > div:nth-child(1) { width: 33% !important }');
     addGlobalStyle('#shiny-modifier-head * { width: 22% }');
@@ -222,6 +289,7 @@ function initShinySynapse() {
         element.setAttribute('class', `btn btn-${globalShinyState ? 'success' : 'danger'}`);
         element.textContent = `Global Override [${globalShinyState ? 'ON' : 'OFF'}]`;
         localStorage.setItem("globalShinyState", JSON.stringify(globalShinyState));
+        syncShinyHooks();
     }
 
     function toggleKarma(event) {
@@ -230,6 +298,7 @@ function initShinySynapse() {
         element.setAttribute('class', `btn btn-${karmaMode ? 'success' : 'danger'}`);
         element.textContent = `Karma Mode [${karmaMode ? 'ON' : 'OFF'}]`;
         localStorage.setItem("shinyKarmaMode", JSON.stringify(karmaMode));
+        syncShinyHooks();
         updateShinyModal();
     }
 
@@ -265,11 +334,18 @@ function initShinySynapse() {
             }
         }
         localStorage.setItem("shinySetRates", JSON.stringify(prefShinyRates));
+        syncShinyHooks();
     }
 
-    function checkInput(input) {
-        const value = +event.target.value.replace(/[A-Za-z!@#$%^&*()]/g, '').replace(/[,]/g, "");
-        event.target.value = value.toLocaleString('en-US');
+    function readShinyInput(input) {
+        const text = input.value.replace(/,/g, '').trim();
+        const rate = /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
+        return validShinyRate(rate) ? rate : null;
+    }
+
+    function checkInput(event) {
+        const value = readShinyInput(event.target);
+        if (value !== null) event.target.value = value.toLocaleString('en-US', { maximumFractionDigits: 20 });
     }
 
     function updateShinyModal() {
@@ -289,49 +365,41 @@ function initShinySynapse() {
     }
 }
 
-function getShinyTypes() {
-    const shinyTypeData = Object.keys(GameConstants).filter(e => e.includes('SHINY_CHANCE'));
-    return shinyTypeData;
+function validShinyRate(rate) {
+    return typeof rate === 'number' && Number.isFinite(rate) && rate >= 1 && rate <= maxShinyRate;
 }
 
 function getShinyRates() {
-    for (let i = 0; i < shinyTypes.length; i++) {
-        if (prefShinyRates[i]) {
-            shinyRates.push(prefShinyRates[i]);
-        } else {
-            shinyRates.push(GameConstants[shinyTypes[i]]);
-        }
-    }
+    shinyRates = shinyTypes.map((type, index) => prefShinyRates[index] ?? GameConstants[type]);
 }
 
-shinyTypes = getShinyTypes();
-if (!localStorage.getItem('globalShinyState')) {
-    localStorage.setItem('globalShinyState', false);
+function loadShinySettings() {
+    shinyTypes = [...shinyTypeNames];
+    const read = (key, fallback) => {
+        try {
+            return JSON.parse(localStorage.getItem(key)) ?? fallback;
+        } catch (_) {
+            return fallback;
+        }
+    };
+    globalShinyState = read('globalShinyState', false) === true;
+    globalShinyRate = read('globalShinyRate', 8192);
+    if (!validShinyRate(globalShinyRate)) globalShinyRate = 8192;
+    karmaMode = read('shinyKarmaMode', false) === true;
+    shinyDOMUpdate = read('shinyDOMUpdate', false) === true;
+    const savedPreferences = read('shinySetRates', []);
+    const savedKarma = read('shinyKarmaRates', []);
+    prefShinyRates = shinyTypes.map((type, index) =>
+        Array.isArray(savedPreferences) && validShinyRate(savedPreferences[index]) ? savedPreferences[index] : null);
+    karmaRates = shinyTypes.map((type, index) => {
+        const rate = Array.isArray(savedKarma) ? savedKarma[index] : null;
+        return validShinyRate(rate) && rate <= GameConstants[type] ? rate : GameConstants[type];
+    });
+    for (const [key, value] of Object.entries({ globalShinyState, globalShinyRate,
+        shinySetRates: prefShinyRates, shinyKarmaMode: karmaMode, shinyKarmaRates: karmaRates, shinyDOMUpdate })) {
+        localStorage.setItem(key, JSON.stringify(value));
+    }
 }
-if (!localStorage.getItem('globalShinyRate')) {
-    localStorage.setItem('globalShinyRate', 8192);
-}
-if (!localStorage.getItem('shinySetRates')) {
-    const prefArray = new Array(shinyTypes.length).fill(null, 0, shinyTypes.length);
-    localStorage.setItem('shinySetRates', JSON.stringify(prefArray));
-}
-if (!localStorage.getItem('shinyKarmaMode')) {
-    localStorage.setItem('shinyKarmaMode', false);
-}
-if (!localStorage.getItem('shinyKarmaRates')) {
-    const karmaRates = [];
-    shinyTypes.forEach(item => { karmaRates.push(GameConstants[item]) });
-    localStorage.setItem('shinyKarmaRates', JSON.stringify(karmaRates));
-}
-if (!localStorage.getItem('shinyDOMUpdate')) {
-    localStorage.setItem('shinyDOMUpdate', false);
-}
-globalShinyState = JSON.parse(localStorage.getItem('globalShinyState'));
-globalShinyRate = JSON.parse(localStorage.getItem('globalShinyRate'));
-prefShinyRates = JSON.parse(localStorage.getItem('shinySetRates'));
-karmaMode = JSON.parse(localStorage.getItem('shinyKarmaMode'));
-karmaRates = JSON.parse(localStorage.getItem('shinyKarmaRates'));
-shinyDOMUpdate = JSON.parse(localStorage.getItem('shinyDOMUpdate'));
 
 function addGlobalStyle(css) {
     var head, style;

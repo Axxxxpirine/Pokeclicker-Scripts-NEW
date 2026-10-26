@@ -2,15 +2,28 @@
 
 Independent GPL-3.0 fork of [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts). Original authors, credits and license are preserved.
 
+## Finalization — 26 October 2026
+
+Validated on game 0.10.26 with 237 automated tests, Electron 21.3.1 on macOS, and Zen 1.23.4b with Tampermonkey 5.5.0. Native Alola captures, Friend Safari movement/encounters and a synthetic 1,636-Pokémon collection were exercised on isolated data. Zen completed a League cycle including background time and preserved the frozen save and ball settings exactly through reload. Full process restart/offline/export checks were performed in Electron. This does not certify hours of background operation, Windows/Linux, or a full restart of the user’s live Zen session.
+
+- **Catch Filter 1.9.4:** independent ball preferences after reset and migration, safe malformed-settings recovery, optional Pokérus column.
+- **Synthetic Shiny Synapse 1.5.3:** native source attribution replaces stack parsing, valid probabilities and native shiny bonuses. Unknown sources keep native odds.
+- **Debug Cheats 1.1.0:** current inventories, exact finite quantities, explicit invalid-currency repair, region filters that follow progression, and closure-safe buttons on Desktop. These are manual cheats and can permanently change progression.
+- **Auto Farmer 1.9.0:** a manual 5×5 planting plan with reserves. Leaves occupied, locked and unselected plots untouched, never uproots, and excludes harvesting/replanting automation while active. Rich Mulch uses a reserve and per-activation budget just before maturity. Both modes start OFF after reload. Farmhands remain independent.
+- **Auto Hatchery 3.3.0:** optional native queue, target 1–100 bounded by unlocked capacity, preserving existing queue order and excluding duplicates. Automatic queue filling pauses with PKRS Mode or Auto Egg. Optional type efficiency combines native breeding efficiency, regional multiplier and attack type modifier for the selected target types. Existing priorities and filters still apply.
+- **Auto Navigation 1.1.0:** complete the currently tracked native route/gym/dungeon achievement, run a bounded number of cycles through the current League, or collect the available normal/shiny encounters in the current route or dungeon. Existing capture filters, budgets, time limits, manual cancellation and return behavior apply. Search limits do not guarantee a shiny. Route limits may overshoot slightly between checks.
+
+New automation requires an explicit start. Export your save before using cheat controls. The Debug Cheats, Shiny Modifier and Optional Resources menus remain separate, with no automatic resource grants on installation.
+
 ## L1 compatibility and L3 options — 26 October 2026
 
-Targets Pokéclicker **0.10.26**. The five updated scripts use this fork for future updates. Other scripts and the original documentation below have not been requalified.
+Targets Pokéclicker **0.10.26**. All userscript update URLs point to this fork. Compatibility checks target the scenarios described below, not every historic issue in the upstream tracker.
 
 | Script | Version | Changes |
 | --- | --- | --- |
 | [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Current mine API, one action per second, Chisel/Hammer, native Auto Restart, optional sale respects locked items |
-| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.2.0 | Strict filters, validated priority IDs with fair rotation, bounded hatch loop |
-| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.8.0 | Wanderer capture and persistent stop timer, current replant API |
+| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.0 | Native queue and type efficiency, strict filters, validated priority IDs with fair rotation, bounded hatch loop |
+| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.0 | Per-plot planting plan and bounded pre-ripe Rich Mulch, wanderer capture and persistent stop timer, current replant API |
 | [Auto Safari Zone](custom/autosafarizone.user.js) | 1.2.5 | Current berry inventory, restart after unreachable paths, isolated encounter tiles |
 | [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Pirate artwork, no false warning caused by the number of events |
 
@@ -49,7 +62,7 @@ Various scripts & enhancements for the game [Pokéclicker](https://www.pokeclick
 
 These scripts were created for use with Script Manager browser extensions such as [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/). They should be compatible with most other Script Managers as well. If you have a Script Manager installed, you can click on the One-Click install links to easily install any scripts here.
 
-If you are looking to use these scripts on the client version of Pokéclicker ([Pokéclicker Desktop](//github.com/RedSparr0w/Pokeclicker-desktop)), replace the <strong>app.asar</strong> file in the client with the [modified version from this repository](//github.com/Ephenia/Pokeclicker-Scripts/tree/master/desktop). For detailed instructions, see [here](//github.com/Ephenia/Pokeclicker-Scripts/blob/master/desktop/README.md).
+If you are looking to use these scripts on the client version of Pokéclicker ([Pokéclicker Desktop](//github.com/RedSparr0w/Pokeclicker-desktop)), replace the <strong>app.asar</strong> file in the client with the [modified version from this repository](//github.com/Ephenia/Pokeclicker-Scripts/tree/master/desktop). For detailed instructions, see [here](//github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/README.md).
 
 **If you are looking to have something specific created or have any inquiries, feel free to contact me directly (contact info on profile) OR [open and create an issue](https://github.com/Ephenia/Pokeclicker-Scripts/issues).**
 
@@ -367,11 +380,11 @@ This script should be your first step if you are experiencing bugs, especially a
 <hr>
 
 <a name="script-manager"></a>
-## Script manager (Exclusive to the desktop client) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/desktop/">app.asar</a>)
+## Script manager (Exclusive to the desktop client) (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/">app.asar</a>)
 
 This script provides desktop client support for userscripts, allowing you to run or disable userscripts like a userscript manager browser extension does. All the scripts in this repository are supported and are by default automatically downloaded and updated. It can also run other userscripts that you install. Options are located in the <strong>Scripts</strong> tab in the game's settings menu. 
 
-This script is only compatible with the desktop client. For detailed instructions on installing and using the script manager, see [here](//github.com/Ephenia/Pokeclicker-Scripts/blob/master/desktop/).
+This script is only compatible with the desktop client. For detailed instructions on installing and using the script manager, see [here](//github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/).
 
 <img width="840" alt="Script manager options" src="https://github.com/Ephenia/Pokeclicker-Scripts/assets/12092270/dc19411e-c565-48cb-8be6-6ac9b8abe17b">
 
@@ -380,7 +393,7 @@ This script is only compatible with the desktop client. For detailed instruction
 <a name="optional-resources"></a>
 ## [Custom] Optional Resources
 
-[Install Optional Resources](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalresources.user.js)
+[Install Optional Resources](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js)
 
 In **Save → Optional resources**, explicitly enable cheats for this session, choose a resource and enter a whole quantity. Adds currencies through the native wallet (without bonuses), current mining items and Key Stone through their native item APIs, berries, Dream Orbs, or purification flow. The flow chamber must be unlocked and flow is limited to the native cap. Currency statistics and berry unlocks can change too. Quantities must be 1–1,000,000,000 and totals must remain within JavaScript's safe numeric range.
 
@@ -389,7 +402,7 @@ The optional hourly Dream Orb bonus runs only after Start, for at most 1–100 o
 <a name="optional-battle-cafe"></a>
 ## [Custom] Optional Battle Cafe
 
-[Install Optional Battle Cafe](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalbattlecafe.user.js)
+[Install Optional Battle Cafe](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js)
 
 In the **Battle Cafe** window, select a sweet, spin recipe, reward time and batch size (1–100), then explicitly start an accelerated batch. One result is resolved every 0.1 seconds, including the hour-long Cheesy Milcery recipe. Each result pays the native berry cost and consumes a daily spin unless the resulting Pokémon is resistant, matching the native exemption. The Café must be unlocked. Insufficient berries, missing spins, or an existing native spin stop/prevent the batch. Stop cancels pending results. Extra spins can be granted separately, 1–100 per click.
 
@@ -398,11 +411,11 @@ Recipe names state the time needed for their flavor. Choose the matching Day/Nig
 <a name="optional-accelerators"></a>
 ## [Custom] Optional Accelerators
 
-[Install Optional Accelerators](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/optionalaccelerators.user.js)
+[Install Optional Accelerators](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js)
 
 In **Settings → Scripts**, choose farm speed 0.5×, 2×, 5× or 10×. This scales complete online farm updates, including growth, withering, mulch, mutations, wanderer checks and farmhands. Faster farmhands may spend berries and money faster. Auto Farmer polling and offline growth keep their own timing. The separate hatch option adds one base EV through the native effort-point calculation after a successful hatch, including helpers. Pokérus eligibility, multipliers, held items and the slow-EV challenge apply. No extra shiny or shadow multiplier is added. A separate 2× party-attack toggle advances only the route combat counter. It leaves capture delays, damage, game time, gyms, dungeons and Battle Frontier unchanged.
 
-**All L5 effects start OFF after each reload.** Each script is separately installable and can be disabled. Turning effects OFF stops future behavior and restores native methods where applicable. It does not remove resources, Pokémon, EVs, achievements or other progression already earned. Export a save first and test on a copy. No script in this lot changes the save schema, adds hatchery slots, or intercepts version migrations to keep MissingNo. Same-version MissingNo serialization is already preserved by game 0.10.26. This lot has been tested on a local browser copy of that version, not installed into Joey's original Zen game or validated in Desktop.
+**All L5 effects start OFF after each reload.** Each script is separately installable and can be disabled. Turning effects OFF stops future behavior and restores native methods where applicable. It does not remove resources, Pokémon, EVs, achievements or other progression already earned. Export a save first and test on a copy. No script in this lot changes the save schema, adds hatchery slots, or intercepts version migrations to keep MissingNo. Same-version MissingNo serialization is already preserved by game 0.10.26. The combined scripts are tested on isolated copies in Electron/macOS and Zen/Tampermonkey. Windows/Linux and other game versions are not validated.
 
 <hr>
 
@@ -505,7 +518,7 @@ This also removes any requirements needed to unlock any Oak Item slots, meaning 
 <hr>
 
 <a name="omega-protein-gains"></a>
-## [Custom] Omega Protein Gains (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/codex/l5-custom-options/custom/omegaproteingains.user.js">omegaproteingains.user.js</a>) (<a href="https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/codex/l5-custom-options/custom/omegaproteingains.user.js">One-Click Install</a>)
+## [Custom] Omega Protein Gains (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/codex/l5-custom-options/custom/omegaproteingains.user.js">omegaproteingains.user.js</a>) (<a href="https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/omegaproteingains.user.js">One-Click Install</a>)
 In **Settings → Scripts → Omega Protein Gains**, enable the optional native-limit override, then set a personal Protein/Calcium ceiling per Pokémon (default 1000). Unlimited Protein/Calcium requires a separate explicit switch. Both switches start OFF on each reload, and only the numeric ceiling is saved. Carbos remains capped at 70 while enabled. Existing vitamins are never removed when lowering the ceiling or disabling the script. Stock, the no-vitamins challenge and hatchery restrictions are respected. The game's expanded vitamin table already lets you enter a target amount directly, including quantities above 10.
 
 <hr>

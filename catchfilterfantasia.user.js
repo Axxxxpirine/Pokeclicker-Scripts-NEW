@@ -5,12 +5,12 @@
 // @description   An experimental catch filter that aims to help you have much better control and will completely change how you capture Pokémon.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.3
+// @version       1.9.4
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/catchfilterfantasia.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/catchfilterfantasia.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
@@ -24,6 +24,7 @@ var filterTypes;
 var filterBallPref;
 var catchFilter;
 var filterColor;
+var filterShowPokerus;
 
 function initCatchFilter() {
     const pokeballDisplay = document.getElementById('pokeballSelector');
@@ -39,6 +40,7 @@ function initCatchFilter() {
     addGlobalStyle('.filter-pokeball-n { position: absolute; right: 25%; }');
     addGlobalStyle('.filter-pokeball-s { position: absolute; right: 20%; }');
     addGlobalStyle('.filter-shiny { position: absolute; right: 17%; }');
+    addGlobalStyle('.filter-pokerus { position: absolute; right: 1%; width: 14%; text-align: center; font-size: 0.8em; }');
     addGlobalStyle('#filter-btn-cont { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }');
     addGlobalStyle('#filter-btn-cont > button { display: flex; justify-content: center; min-width: 107px; }');
     addGlobalStyle('#filter-btn-tools { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-end; column-gap: 10px; }');
@@ -77,6 +79,7 @@ function initCatchFilter() {
 
     const modalBody = document.querySelector('[id=filterModal] div div [class=modal-body]');
     modalBody.innerHTML = `<button id="catch-filter" class="btn btn-${filterColor ? 'success' : 'danger'}" style="margin-left:20px;">Catch Filter ${filterState ? '[ON]' : '[OFF]'}</button>
+    <label style="margin-left:20px;"><input id="filter-show-pokerus" type="checkbox" ${filterShowPokerus ? 'checked' : ''}> Show Pokérus</label>
     <hr>
     <div id="filter-btn-cont"></div>
     <hr>
@@ -114,6 +117,11 @@ function initCatchFilter() {
     document.getElementById('reset-ball-filter').addEventListener('click', () => { resetBallFilterAll(); });
     document.getElementById('catch-filter').addEventListener('click', (event) => { toggleCatchFilter(event); });
     document.getElementById('filter-search').addEventListener('input', (event) => { filterPokeSearch(event); });
+    document.getElementById('filter-show-pokerus').addEventListener('change', (event) => {
+        filterShowPokerus = event.target.checked;
+        localStorage.setItem('filterShowPokerus', JSON.stringify(filterShowPokerus));
+        updateFilterPokerus();
+    });
 
     overloadPokeballMethod();
     loadFilteredList();
@@ -135,6 +143,7 @@ function loadFilteredList() {
         const frag = new DocumentFragment();
         for (const id of catchFilter) {
             const findPoke = pokemonList.find(p => p.id == id);
+            if (!findPoke) continue;
             const pokeIndex = pokemonList.indexOf(findPoke);
             const ballPrefN = filterBallPref[pokeIndex].normal;
             const ballPrefS = filterBallPref[pokeIndex].shiny;
@@ -311,7 +320,7 @@ function unfilterAllPoke() {
 }
 
 function resetBallFilterAll() {
-    filterBallPref = new Array(pokemonList.length).fill({normal: 0, shiny: 0}, 0, pokemonList.length);
+    filterBallPref = Array.from({length: Math.max(pokemonList.length, filterBallPref.length)}, () => ({normal: 0, shiny: 0}));
     localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
     filterPokeSearch(true);
 }
@@ -328,7 +337,7 @@ function toggleCatchFilter(event) {
 function filterPokeSearch(event) {
     document.getElementById('filter-results').innerHTML = '';
     let pokeStr;
-    try { pokeStr = event.target.value.toLowerCase(); } catch (err) { pokeStr = document.getElementById('filter-search').value; };
+    try { pokeStr = event.target.value.toLowerCase(); } catch (err) { pokeStr = document.getElementById('filter-search').value.toLowerCase(); };
     const filterList = pokemonList.filter(p => p.name.toLowerCase().includes(pokeStr));
     const frag = new DocumentFragment();
     for (const poke of filterList) {
@@ -353,7 +362,8 @@ function filterPokeSearch(event) {
 }
 
 function toggleFilteredPoke(event) {
-    const elem = event.target;
+    const elem = event.target.closest('[ball-pref], [data-src]');
+    if (!elem) return;
     const id = +elem.getAttribute('data-src');
     if (elem.hasAttribute('ball-pref')) {
         const ballPref = +elem.getAttribute('ball-pref');
@@ -375,6 +385,7 @@ function toggleFilteredPoke(event) {
 }
 
 function setRightClick() {
+    updateFilterPokerus();
     const ballElemsN = document.getElementsByClassName('filter-pokeball-n');
     const ballElemsS = document.getElementsByClassName('filter-pokeball-s');
     for (let i = 0; i < ballElemsN.length; i++) {
@@ -382,6 +393,20 @@ function setRightClick() {
     }
     for (let ii = 0; ii < ballElemsS.length; ii++) {
         ballElemsS[ii].addEventListener('contextmenu', (event) => { event.preventDefault();resetBallFilter(event); });
+    }
+}
+
+function updateFilterPokerus() {
+    for (const row of document.querySelectorAll('#filter-results > div[data-src]')) {
+        row.querySelector('.filter-pokerus')?.remove();
+        if (!filterShowPokerus) continue;
+        const partyPokemon = App.game.party?.getPokemon(+row.getAttribute('data-src'));
+        const status = GameConstants.Pokerus?.[partyPokemon?.pokerus ?? 0] ?? 'Uninfected';
+        const column = document.createElement('span');
+        column.className = 'filter-pokerus';
+        column.textContent = status;
+        column.title = `Pokérus: ${status}`;
+        row.appendChild(column);
     }
 }
 
@@ -396,16 +421,22 @@ function resetBallFilter(event) {
 
 function overloadPokeballMethod() {
     const hasBall = function(ballId) {
-        return App.game.pokeballs.pokeballs[ballId].quantity() > 0;
+        return App.game.pokeballs.pokeballs[ballId]?.quantity() > 0;
     }
 
     const newMethod = function(id, isShiny, isShadow, encounterType) {
         const pokemon = PokemonHelper.getPokemonById(id);
+        if (!pokemon) {
+            return App.game.pokeballs.oldCalculatePokeballToUse(id, isShiny, isShadow, encounterType);
+        }
         const type1 = pokemon.type1;
         const type2 = pokemon.type2;
 
         // FIXME: we could just use a map with the changes we want
         const pokeIndex = pokemonList.findIndex(p => p.id == pokemon.id);
+        if (pokeIndex === -1) {
+            return App.game.pokeballs.oldCalculatePokeballToUse(id, isShiny, isShadow, encounterType);
+        }
 
         // FIXME: the values of pokeballs for the choices on the modal are
         //   offset by -1
@@ -434,41 +465,45 @@ function overloadPokeballMethod() {
     App.game.pokeballs.calculatePokeballToUse = newMethod;
 }
 
-if (!localStorage.getItem('filterState')) {
-    localStorage.setItem('filterState', false);
-}
-if (!localStorage.getItem('filterTypes')) {
-    const typeArray = new Array(18).fill(false, 0, 18);
-    localStorage.setItem('filterTypes', JSON.stringify(typeArray));
-}
-if (!localStorage.getItem('filterBallPref')) {
-    const prefArray = new Array(pokemonList.length).fill({normal: 0, shiny: 0}, 0, pokemonList.length);
-    localStorage.setItem('filterBallPref', JSON.stringify(prefArray));
-}
-if (!localStorage.getItem('catchFilter')) {
-    localStorage.setItem('catchFilter', JSON.stringify([]));
-}
-filterState = JSON.parse(localStorage.getItem('filterState'));
-filterTypes = JSON.parse(localStorage.getItem('filterTypes'));
-catchFilter = JSON.parse(localStorage.getItem('catchFilter'));
-filterBallPref = JSON.parse(localStorage.getItem('filterBallPref'));
-
-if (filterBallPref.length != pokemonList.length) {
-    const diff = pokemonList.length - filterBallPref.length;
-    const newPoke = new Array(diff).fill({normal: 0, shiny: 0}, 0, diff);
-    filterBallPref = filterBallPref.concat(newPoke);
-    localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
-}
-
-const fixIt = filterBallPref.filter(e => typeof e == 'number');
-if (fixIt.length != 0) {
-    for (const index in filterBallPref) {
-        if (typeof filterBallPref[index] == 'number') {
-            filterBallPref[index] = {normal: 0, shiny: 0};
-        }
+// Repair only this script's settings and retain the original value before migration.
+function readCatchFilterSetting(key, normalize) {
+    const raw = localStorage.getItem(key);
+    let saved;
+    try {
+        saved = JSON.parse(raw);
+    } catch (error) {
+        saved = undefined;
     }
-    localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
+    const value = normalize(saved);
+    const serialized = JSON.stringify(value);
+    if (raw === null || serialized !== JSON.stringify(saved)) {
+        if (raw !== null) {
+            const backupBase = `catchfilterfantasia.backup.${key}`;
+            let backupKey = backupBase;
+            let suffix = 1;
+            while (localStorage.getItem(backupKey) !== null && localStorage.getItem(backupKey) !== raw) {
+                backupKey = `${backupBase}.${suffix++}`;
+            }
+            localStorage.setItem(backupKey, raw);
+        }
+        localStorage.setItem(key, serialized);
+    }
+    return value;
 }
+
+filterState = readCatchFilterSetting('filterState', value => value === true);
+filterShowPokerus = readCatchFilterSetting('filterShowPokerus', value => value === true);
+filterTypes = readCatchFilterSetting('filterTypes', value => Array.from({length: 18}, (_, index) => Array.isArray(value) && value[index] === true));
+catchFilter = readCatchFilterSetting('catchFilter', value => Array.isArray(value) ? [...new Set(value.filter(id => typeof id === 'number' && Number.isFinite(id) && id > 0))] : []);
+filterBallPref = readCatchFilterSetting('filterBallPref', value => {
+    const saved = Array.isArray(value) ? value : [];
+    const validBall = ball => Number.isInteger(ball) && ball >= 0 && ball < ballNames.length ? ball : 0;
+    // Do not discard preferences if an older game temporarily has fewer species.
+    return Array.from({length: Math.max(pokemonList.length, saved.length)}, (_, index) => ({
+        normal: validBall(saved[index]?.normal),
+        shiny: validBall(saved[index]?.shiny),
+    }));
+});
 
 function addGlobalStyle(css) {
     var head, style;

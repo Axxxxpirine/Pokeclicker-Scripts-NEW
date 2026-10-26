@@ -4,7 +4,7 @@
 // @author        Axxxxpirine
 // @description   Opt-in accelerated Cafe batches, reward-only time override and finite extra spins. OFF each reload. Berries are always paid and save changes persist.
 // @license       GPL-3.0 License
-// @version       1.0.0
+// @version       1.0.1
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js
@@ -251,6 +251,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
 }
 
 
-if (typeof App !== 'undefined' && (!App.isUsingClient || localStorage.getItem('optionalbattlecafe') === 'true')) {
+if (typeof App !== 'undefined' && (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('optionalbattlecafe') ?? (localStorage.getItem('optionalbattlecafe') === 'true')))) {
     loadEpheniaScript('optionalbattlecafe', initOptionalBattleCafe);
 }

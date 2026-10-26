@@ -5,7 +5,7 @@
 // @description   Automates the usage of Battle Items as effectively and efficiently as possible. Now includes which items you would like to automate specifically and being able to toggle them.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.1.4
+// @version       1.1.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -166,6 +166,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('autobattleitems') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('autobattleitems') ?? (localStorage.getItem('autobattleitems') === 'true'))) {
     loadEpheniaScript('autobattleitems', initAutoBattleItems);
 }

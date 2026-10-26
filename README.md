@@ -35,17 +35,22 @@ For updates, use your userscript manager's update check or reopen the same Insta
 
 ### Desktop client
 
-Use the modified **Scripts Desktop 2.2.2** loader with an existing [Pokéclicker Desktop client](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
+**Scripts Desktop 3.0.0 requires Electron 45.0.0 or newer.** An old desktop executable does not become secure by replacing `app.asar`. Earlier Electron versions are refused at startup.
 
-1. Export your save, keep a copy of the original client `app.asar`, and close the client.
-2. Download this fork's [app.asar](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/desktop/app.asar) and replace the client's `resources/app.asar`. On macOS, the resources directory is inside the application bundle.
-3. Start the client, open **Settings → Scripts**, select the scripts you want, then reload or restart. Repository scripts start disabled unless you previously selected them.
+Use this checkout's pinned Electron launcher with [Node.js 22.12 or newer](https://nodejs.org/en/download):
 
-See the [desktop installation and update guide](desktop/README.md) for platform paths, offline use and custom scripts. Do not delete the client data folder to install or update the loader.
+```sh
+git clone https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW.git
+cd Pokeclicker-Scripts-NEW
+npm ci
+npm run start:desktop
+```
 
-The loader checks this fork for script updates and can use cached scripts offline after the game has been downloaded. Turn off **Script auto-updates enabled** to preserve local edits. Official executable updates must be checked manually, while game-data and script updates remain separate.
+Export your save before migrating, keep your existing application data folder, and import the export if the new launcher opens an empty profile. Open **Settings → Scripts**, select the scripts you want, then reload. Repository scripts start disabled unless previously selected.
 
-The archive is a built artifact. If you are testing changes to scripts or desktop sources in a checkout, [rebuild it](#development) to include those changes. Replacing the archive does not establish which version of the original official client you had installed.
+See the [desktop guide](desktop/README.md) for updates, platform paths, offline use and custom scripts. The published [app.asar](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/desktop/app.asar) contains the application code, not Electron. Manual replacement is appropriate only in a client whose Electron runtime meets the requirement.
+
+The loader checks this fork for script updates and uses cached scripts offline after the game has been downloaded. Turn off **Script auto-updates enabled** to preserve local edits. When upgrading to 3.0.0 with updates disabled, refresh the selected scripts once so they understand the new activation keys. Runtime, game and script updates are separate. Rebuild the archive after editing scripts or desktop sources in a checkout.
 
 ## Script catalog
 
@@ -57,17 +62,17 @@ These scripts automate actions or change the interface. Individual options can e
 
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
-| [Additional Visual Settings](additionalvisualsettings.user.js) | 3.0.1 | Hide selected battle visuals and add navigation shortcuts. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/additionalvisualsettings.user.js) |
-| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.1 | Adjustable auto clicking, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
-| [Auto Navigation](autonavigation.user.js) | 1.1.0 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
-| [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.5 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
-| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.0 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
-| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Chisel/Hammer mining and optional sale of unlocked sellable treasures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautomine.user.js) |
-| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.0 | Planting, harvesting, replanting, mulching, wanderer capture, stop timer and manual mutation plans. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/simpleautofarmer.user.js) |
-| [Auto Battle Frontier](autobattlefrontier.user.js) | 1.5.6 | Repeat Frontier runs using a maximum stage or attack-count limit. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattlefrontier.user.js) |
-| [Auto Battle Items](autobattleitems.user.js) | 1.1.4 | Use selected battle items automatically and optionally buy them at base price. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattleitems.user.js) |
-| [Auto Quest Completer](custom/autoquestcompleter.user.js) | 2.1.1 | Accept and claim quests, prioritize types and control refresh spending. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autoquestcompleter.user.js) |
-| [Auto Safari Zone](custom/autosafarizone.user.js) | 1.3.0 | Explore, capture and collect items. Seek New pursues visible uncaught Pokémon on land and water. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autosafarizone.user.js) |
+| [Additional Visual Settings](additionalvisualsettings.user.js) | 3.0.2 | Hide selected battle visuals and add navigation shortcuts. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/additionalvisualsettings.user.js) |
+| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.2 | Adjustable auto clicking, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
+| [Auto Navigation](autonavigation.user.js) | 1.1.1 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
+| [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.6 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
+| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.1 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
+| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.1 | Chisel/Hammer mining and optional sale of unlocked sellable treasures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautomine.user.js) |
+| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.1 | Planting, harvesting, replanting, mulching, wanderer capture, stop timer and manual mutation plans. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/simpleautofarmer.user.js) |
+| [Auto Battle Frontier](autobattlefrontier.user.js) | 1.5.7 | Repeat Frontier runs using a maximum stage or attack-count limit. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattlefrontier.user.js) |
+| [Auto Battle Items](autobattleitems.user.js) | 1.1.5 | Use selected battle items automatically and optionally buy them at base price. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattleitems.user.js) |
+| [Auto Quest Completer](custom/autoquestcompleter.user.js) | 2.1.2 | Accept and claim quests, prioritize types and control refresh spending. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autoquestcompleter.user.js) |
+| [Auto Safari Zone](custom/autosafarizone.user.js) | 1.3.1 | Explore, capture and collect items. Seek New pursues visible uncaught Pokémon on land and water. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autosafarizone.user.js) |
 
 ### Optional gameplay overrides
 
@@ -75,26 +80,26 @@ These scripts can change normal game rules or directly change saved progression.
 
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
-| [Catch Speed Adjuster](custom/catchspeedadjuster.user.js) | 1.4.4 | Toggle zero-delay Poké Ball captures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/catchspeedadjuster.user.js) |
-| [Synthetic Shiny Synapse](custom/syntheticshinysynapse.user.js) | 1.5.4 | Configure shiny odds by source or globally, with optional Karma Mode. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/syntheticshinysynapse.user.js) |
-| [Debug Cheats Tools](custom/debugcheatstools.user.js) | 1.1.1 | Manual inventory, currency, Pokémon and quest-line editing. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/debugcheatstools.user.js) |
-| [Optional Resources](custom/optionalresources.user.js) | 1.0.0 | Explicit resource grants and a bounded online Dream Orb bonus. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js) |
-| [Optional Battle Cafe](custom/optionalbattlecafe.user.js) | 1.0.0 | Accelerated, bounded Café batches, reward-time overrides and extra spins. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js) |
-| [Optional Accelerators](custom/optionalaccelerators.user.js) | 1.0.0 | Farm speed, a hatch EV bonus and double route party-attack cadence. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js) |
-| [Omega Protein Gains](custom/omegaproteingains.user.js) | 1.2.1 | Optional Protein/Calcium cap overrides. Carbos remains capped at 70. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/omegaproteingains.user.js) |
-| [Challenge Mode Changer](custom/challengemodechanger.user.js) | 1.2.4 | Enable or disable challenges on an existing save. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/challengemodechanger.user.js) |
-| [Discord Code Generator](custom/discordcodegenerator.user.js) | 1.3.4 | Generate codes for Discord reward Pokémon without linking a Discord account. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/discordcodegenerator.user.js) |
-| [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Toggle seasonal events outside their normal dates, including simultaneous events. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/infiniteseasonalevents.user.js) |
-| [Oak Items Unlimited](custom/oakitemsunlimited.user.js) | 1.0.4 | Remove the limit on simultaneously equipped Oak Items. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/oakitemsunlimited.user.js) |
-| [Overnight Berries](custom/overnightberrygrowth.user.js) | 1.1.5 | Apply offline berry growth with ripe, withered or pre-wither harvest modes. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/overnightberrygrowth.user.js) |
-| [Perky Pokerus Pandemic](custom/perkypokeruspandemic.user.js) | 2.0.4 | Spread Pokérus between eligible hatchery eggs without matching types. Helper eggs are excluded. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/perkypokeruspandemic.user.js) |
-| [Simple Weather Changer](custom/simpleweatherchanger.user.js) | 1.4.4 | Override weather across regions, or return to Default Weather. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/simpleweatherchanger.user.js) |
+| [Catch Speed Adjuster](custom/catchspeedadjuster.user.js) | 1.4.5 | Toggle zero-delay Poké Ball captures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/catchspeedadjuster.user.js) |
+| [Synthetic Shiny Synapse](custom/syntheticshinysynapse.user.js) | 1.5.5 | Configure shiny odds by source or globally, with optional Karma Mode. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/syntheticshinysynapse.user.js) |
+| [Debug Cheats Tools](custom/debugcheatstools.user.js) | 1.1.2 | Manual inventory, currency, Pokémon and quest-line editing. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/debugcheatstools.user.js) |
+| [Optional Resources](custom/optionalresources.user.js) | 1.0.1 | Explicit resource grants and a bounded online Dream Orb bonus. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js) |
+| [Optional Battle Cafe](custom/optionalbattlecafe.user.js) | 1.0.1 | Accelerated, bounded Café batches, reward-time overrides and extra spins. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js) |
+| [Optional Accelerators](custom/optionalaccelerators.user.js) | 1.0.1 | Farm speed, a hatch EV bonus and double route party-attack cadence. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js) |
+| [Omega Protein Gains](custom/omegaproteingains.user.js) | 1.2.2 | Optional Protein/Calcium cap overrides. Carbos remains capped at 70. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/omegaproteingains.user.js) |
+| [Challenge Mode Changer](custom/challengemodechanger.user.js) | 1.2.5 | Enable or disable challenges on an existing save. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/challengemodechanger.user.js) |
+| [Discord Code Generator](custom/discordcodegenerator.user.js) | 1.3.5 | Generate codes for Discord reward Pokémon without linking a Discord account. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/discordcodegenerator.user.js) |
+| [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.5 | Toggle seasonal events outside their normal dates, including simultaneous events. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/infiniteseasonalevents.user.js) |
+| [Oak Items Unlimited](custom/oakitemsunlimited.user.js) | 1.0.5 | Remove the limit on simultaneously equipped Oak Items. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/oakitemsunlimited.user.js) |
+| [Overnight Berries](custom/overnightberrygrowth.user.js) | 1.1.6 | Apply offline berry growth with ripe, withered or pre-wither harvest modes. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/overnightberrygrowth.user.js) |
+| [Perky Pokerus Pandemic](custom/perkypokeruspandemic.user.js) | 2.0.5 | Spread Pokérus between eligible hatchery eggs without matching types. Helper eggs are excluded. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/perkypokeruspandemic.user.js) |
+| [Simple Weather Changer](custom/simpleweatherchanger.user.js) | 1.4.5 | Override weather across regions, or return to Default Weather. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/simpleweatherchanger.user.js) |
 
 ### Repair tool
 
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
-| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.2 | Reset script-related local storage after confirmation. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
+| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.3 | Reset known script preferences after confirmation, preserving saves and unrelated data. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
 
 ## Feature guide
 
@@ -238,7 +243,7 @@ Mining waits for durability and relies on the game's Auto Restart. Energy restor
 
 **Last resort: reset script settings**
 
-Script Fixer Upper is a troubleshooting tool, not a normal dependency. After confirmation it removes local-storage keys except those beginning with `save`, `player` or `settings`. This can remove settings from unrelated scripts too. Export your save first, then disable the fixer after use and reload. Prefer disabling one problematic script before a broad reset.
+Script Fixer Upper is a troubleshooting tool, not a normal dependency. After confirmation it resets only a fixed list of known preferences for this collection. It preserves saves, backups, unknown keys, other scripts’ data, activation choices and update preferences, then disables itself. Export your save first. Prefer disabling the problematic script before resetting its preferences.
 
 **Report a problem**
 
@@ -246,17 +251,23 @@ Open an [issue in this fork](https://github.com/Axxxxpirine/Pokeclicker-Scripts-
 
 ## Compatibility and validation
 
-This fork targets **Pokéclicker 0.10.26**. Previously exercised environments are **Zen 1.23.4b with Tampermonkey 5.5.0** and **Electron 21.3.1 on macOS**. Windows, Linux, other userscript managers, other game versions and every combination of scripts have not been validated.
+This fork targets **Pokéclicker 0.10.26**. Browser testing previously used **Zen 1.23.4b with Tampermonkey 5.5.0**. Desktop 3.0.0 was exercised with **Electron 45.0.0 on macOS**, using the real game in an isolated test profile. Other userscript managers, every script combination and all game regions have not been exercised.
 
-The current source suite contains **256 automated tests**, including **22 Safari tests**. Coverage includes Safari pathfinding and capture priorities, mining, farming, hatchery filters and queues, navigation limits, quest budgets, custom overrides, desktop script loading/updating, and archive contents matching the source files and license notices. Passing these tests is not a guarantee of hours of background operation or every game region.
+The 334-test automated suite covers Safari pathfinding and capture priorities, mining, farming, hatchery queues, navigation limits, quest budgets, custom overrides, desktop loading and updates, security regressions and archive/source consistency. [GitHub checks](https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/actions/workflows/security.yml) run the suite and dependency audits on macOS, Windows and Linux. These checks do not substitute for native Windows/Linux gameplay testing.
 
-Safari movement, bait, captures, item collection and stopping were also checked in a live Kanto session with version 1.2.5. The new visible-uncaught pursuit in **Auto Safari 1.3.0** is covered by automated tests and code review. Installing that update alone does not establish that the new pursuit has been exercised in a live session.
+Safari movement, bait, captures, item collection and stopping were checked in a live Kanto session with version 1.2.5. The visible-uncaught pursuit introduced in **Auto Safari 1.3.0** is covered by automated tests and code review. Version 1.3.1 additionally updates Desktop activation handling. The new pursuit has not been exercised in a live session.
 
-Desktop 2.2.2 updates ZIP and WebSocket dependencies and removes the unused executable updater and its dependencies. On 2026-10-27, the shipped npm dependency audit reported no known vulnerabilities. This audit does not cover the separately installed Electron executable or certify the whole application as secure. Use a maintained official client runtime and validate compatibility before sharing a custom executable.
+### Security review — 2026-10-27
+
+The review covered all 26 userscripts, the desktop loader and updater, Electron settings, dependency lockfiles and shipped package contents, build automation, repository history and GitHub security settings. No credential-pattern matches were identified in the history scan. Shipped dependency files were compared with their locked npm distributions. Both npm dependency audits reported zero known vulnerabilities at review time.
+
+Desktop 3.0.0 adds explicit renderer isolation, sandboxing, local-file restrictions, denied permissions, navigation and popup controls, and a content security policy. Script downloads are restricted to this fork, bounded in size and checked against GitHub's reported blob hash. Game archives receive bounded downloads, path/type/size validation and staged installation with rollback on ordinary failure. Script activation keys no longer collide with game storage, and Script Fixer Upper no longer clears unrelated data. The obsolete container build was removed and CI actions are pinned by commit.
+
+Native macOS checks covered real game download and startup, offline reload, renderer isolation, blocked private-file access, popup/navigation restrictions and denied permissions. Security regressions were also independently reviewed. See the [desktop guide](desktop/README.md#security-boundaries) for remaining trust boundaries and recovery limits. This is a source and runtime review with regression testing, not an independent certification or a guarantee that no vulnerability remains.
 
 ## Development
 
-Use Node.js 18 or later. From the repository root:
+With Node.js 22.12 or newer, from the repository root:
 
 ```sh
 npm ci

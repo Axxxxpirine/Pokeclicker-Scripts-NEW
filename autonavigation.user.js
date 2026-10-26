@@ -4,7 +4,7 @@
 // @author        Axxxxpirine (Ideas: goldhaxx #431, Bowbylone/Dionisos94 #240, Sorrow #134)
 // @description   Bounded route, gym, dungeon and quest objectives with manual interruption, return, and Poké Mart budgets. Requires the fork's Enhanced Auto Clicker.
 // @license       GPL-3.0 License
-// @version       1.1.0
+// @version       1.1.1
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js
@@ -552,6 +552,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('autonavigation') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('autonavigation') ?? (localStorage.getItem('autonavigation') === 'true'))) {
     loadEpheniaScript('autonavigation', () => AutoNavigator.init());
 }

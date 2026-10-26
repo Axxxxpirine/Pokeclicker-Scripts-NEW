@@ -1,0 +1,39 @@
+name: Security and package checks
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install test tools without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Audit locked dependencies
+        run: |
+          npm audit --audit-level=moderate
+          npm audit --prefix desktop/app_src --omit=optional --audit-level=moderate
+      - name: Test checked-in archive and security regressions
+        run: npm test
+      - name: Rebuild desktop archive
+        run: npm run build:desktop
+      - name: Verify rebuilt archive
+        run: npm test
+      - name: Verify reproducible archive on Linux
+        if: runner.os == 'Linux'
+        run: git diff --exit-code -- desktop/app.asar

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const {createHash} = require('node:crypto');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../desktop/app_src/src');
 test('desktop WebSocket receiver rejects excessive message fragments', async () => {
@@ -128,6 +129,11 @@ function cacheFixture(t) {
 }
 const script = (version,body='') => `// ==UserScript==\n// @name Test\n// @version ${version}\n// ==/UserScript==\n${body}`;
 function loader(){return require(path.join(root,'desktop-scripts.js'));}
+function repositoryEntry(name, body) {
+    return {name, path:name, type:'file',
+        sha:createHash('sha1').update(`blob ${Buffer.byteLength(body)}\0`).update(body).digest('hex'),
+        download_url:'https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/' + name};
+}
 test('failed updates retain cached scripts, checksums and save files',async t=>{
     const {dir,scripts}=cacheFixture(t);fs.writeFileSync(path.join(scripts,'mine.user.js'),script('3.0.0'));
     fs.writeFileSync(path.join(dir,'save'),'original');
@@ -137,14 +143,14 @@ test('failed updates retain cached scripts, checksums and save files',async t=>{
 });
 test('disabled updates preserve manually installed scripts without a checksum',async t=>{
     const {dir,scripts}=cacheFixture(t);fs.writeFileSync(path.join(scripts,'mine.user.js'),script('3.0.0','// local edit'));
-    const result=await loader().updateScripts({dataDir:dir,autoUpdate:false,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[{name:'mine.user.js',download_url:'https://raw.githubusercontent.com/test/mine'}]):script('3.1.0')});
+    const result=await loader().updateScripts({dataDir:dir,autoUpdate:false,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[repositoryEntry('mine.user.js', script('3.1.0'))]):script('3.1.0')});
     assert.equal(fs.readFileSync(path.join(scripts,'mine.user.js'),'utf8'),script('3.0.0','// local edit'));
     assert.equal(result.available,1);
 });
 test('invalid downloads and downgrades preserve last known working cache',async t=>{
     const {dir,scripts}=cacheFixture(t);fs.writeFileSync(path.join(scripts,'mine.user.js'),script('3.0.0'));
     for(const body of ['<html>Error</html>',script('2.0.0'),script('4.0.0','const =')]) {
-        await loader().updateScripts({dataDir:dir,autoUpdate:true,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[{name:'mine.user.js',download_url:'https://raw.githubusercontent.com/test/mine'}]):body});
+        await loader().updateScripts({dataDir:dir,autoUpdate:true,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[repositoryEntry('mine.user.js', body)]):body});
         assert.equal(fs.readFileSync(path.join(scripts,'mine.user.js'),'utf8'),script('3.0.0'));
     }
 });
@@ -230,7 +236,7 @@ test('navigation during downloads cannot execute stale scripts in the next docum
 });
 test('desktop update metadata reports a newer mod without executing the downloaded checker',async t=>{
     const {dir}=cacheFixture(t);
-    const result=await loader().updateScripts({dataDir:dir,autoUpdate:false,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[{name:'desktopupdatechecker.js',download_url:'https://raw.githubusercontent.com/test/checker'}]):"const LATEST_VERSION = '2.10.0'; throw Error('must not execute');"});
+    const result=await loader().updateScripts({dataDir:dir,autoUpdate:false,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[repositoryEntry('desktopupdatechecker.js', "const LATEST_VERSION = '2.10.0'; throw Error('must not execute');")]):"const LATEST_VERSION = '2.10.0'; throw Error('must not execute');"});
     assert.equal(result.latestDesktopVersion,'2.10.0');
 });
 test('custom filenames keep legacy disabled preferences and cannot collide with downloaded toggles',()=>{
@@ -253,7 +259,7 @@ test('requesting an update during a check is retained for the next launch',async
 test('online recovery updates the cache and the next offline launch retains it and the save',async t=>{
     const {dir,scripts}=cacheFixture(t);fs.writeFileSync(path.join(dir,'save'),'unchanged');
     fs.writeFileSync(path.join(scripts,'mine.user.js'),script('1.0.0'));
-    const online=await loader().updateScripts({dataDir:dir,autoUpdate:true,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[{name:'mine.user.js',download_url:'https://raw.githubusercontent.com/test/mine'}]):script('2.0.0')});
+    const online=await loader().updateScripts({dataDir:dir,autoUpdate:true,fetchText:async url=>url.includes('api.github')?JSON.stringify(url.endsWith('/custom')?[]:[repositoryEntry('mine.user.js', script('2.0.0'))]):script('2.0.0')});
     assert.equal(online.updated,1);assert.equal(online.failed,0);
     assert.equal(fs.readFileSync(path.join(scripts,'mine.user.js'),'utf8'),script('2.0.0'));
     const offline=await loader().updateScripts({dataDir:dir,autoUpdate:true,fetchText:async()=>{throw Error('offline')}});

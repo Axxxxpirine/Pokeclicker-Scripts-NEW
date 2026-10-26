@@ -1,28 +1,42 @@
 # Pokéclicker Scripts Desktop
 
-A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.2** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
+**Scripts Desktop 3.0.0** manages this fork's 26 userscripts and targets Pokéclicker 0.10.26. Script updates come from [Axxxxpirine/Pokeclicker-Scripts-NEW](https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW). This is an independent modification of RedSparr0w's desktop client.
 
 ## Install or update
 
-1. Export your save from the game's Save menu and keep the original client `app.asar`. Keep the application data folder as well. Replacing the archive does not require deleting or resetting this folder.
-2. Close the desktop client, locate its `resources` folder (inside the application bundle on macOS), and replace `app.asar` with the file from this folder and branch.
-3. Start the client and open Settings → Scripts. Repository scripts start disabled unless you already selected them. Enable the scripts you want, then restart or reload the window.
+**Electron 45.0.0 or newer is required.** Replacing `app.asar` updates application code but cannot upgrade Electron, Chromium or Node inside an old executable. This release refuses older Electron runtimes. Use the pinned launcher below instead of installing the archive in an obsolete official client.
 
-This archive contains the modified client JavaScript, not the Electron executable. Its base package version is 1.2.0. The loader was exercised on macOS with **Electron 21.3.1 and game 0.10.26**, using an isolated profile and copied save. Other Electron/client versions and Windows/Linux require their own validation. Obtain the official client separately from [Pokéclicker Desktop releases](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
+1. Export your save from the game's Save menu. Keep your previous client and application data folder.
+2. Install [Node.js 22.12 or newer](https://nodejs.org/en/download) and [Git](https://git-scm.com/downloads), then run:
+
+```sh
+git clone https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW.git
+cd Pokeclicker-Scripts-NEW
+npm ci
+npm run start:desktop
+```
+
+3. Import the exported save if the launcher opens an empty profile. Open **Settings → Scripts**, select the scripts you want, then reload. Repository scripts default to disabled. Existing explicit choices are preserved.
+
+`npm ci` installs the pinned Electron runtime, including its normal binary download. To update an unmodified checkout, close the game, run `git pull --ff-only`, then `npm ci` and `npm run start:desktop`. Runtime upgrades require an updated lockfile and reinstall. The launcher does not silently upgrade its own executable.
+
+The [published app.asar](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/desktop/app.asar) remains available for manual installation in a compatible client. Keep its original archive, close the client and replace `resources/app.asar` only after checking its Electron version. On macOS, resources are inside the application bundle. Do not delete application data to update.
 
 ## Versions and updates
 
-Settings → Scripts shows the game version, Scripts Desktop version, Electron runtime and modified package version separately. The installed official client version is reported as **unknown** because replacing `app.asar` also replaces its `package.json`. The modified package version must not be used to identify the original client.
+Settings → Scripts shows the game, Scripts Desktop, Electron runtime and modified package versions separately. The inherited package metadata is 1.2.0. It does not identify the original installed client, which is reported as unknown. Scripts Desktop is 3.0.0.
 
-Automatic executable updates are disabled in the modified client because their version comparison would use the replaced package metadata. Check official client releases manually. Script updates remain available, and a newer Scripts Desktop version is reported in the Scripts panel using the repository's update-check metadata. Game data updates retain the original client's updater.
+Script updates validate the repository listing, exact download location, Git blob hash, JavaScript and numbered version. Downloads are limited to 4 MiB per script. A failed download or write retains the cached script. An older numbered version cannot replace a newer installed version. Files missing from a remote listing are retained.
 
-The script updater validates downloaded JavaScript, replaces complete files atomically and retains the cached copy after network or write failures. An older numbered script version cannot replace a newer installed version. Files absent from a remote listing are retained, rather than renamed or deleted.
+Turn off **Script auto-updates enabled** to preserve local edits. A missing checksum does not override that choice. New scripts can still be installed, disabled by default. **Update scripts on next game launch** requests one update pass and is cleared only after success. Offline checks and a request made during an earlier check preserve the pending request.
 
-Turn off **Script auto-updates enabled** to preserve local edits. A missing checksum does not override that choice. New scripts can still be installed, disabled by default. **Update scripts on next game launch** requests one update pass and is only cleared after a successful pass. Failed/offline checks preserve the request. A request made while an earlier check is running remains queued for the next launch.
+Repository activation choices use `desktopEpheniaScript:<name>`. Existing boolean choices are read without rewriting bare game-storage keys. **When upgrading to 3.0.0 with updates disabled, back up local script edits and request one update pass, or manually replace selected files with the current versions.** Old cached scripts may still read legacy activation keys and ignore a changed selection.
+
+Game updates come from the official Pokéclicker repository. Downloads reject redirects, HTTP errors, incomplete responses and excessive size. The updater validates paths, file types, collisions and extracted sizes, requires game metadata and an HTML index, applies the security policy, then promotes the staged game. Ordinary installation failures restore the prior game. Saves are outside the replaced game directory.
 
 ## Offline use and paths
 
-The game must have been downloaded at least once. After that, the cached game and scripts work offline. The archive bundles 26 repository scripts, so missing script files can also be initialized without a network connection. Bundled newer versions update existing files only when script updates are enabled. Existing selections remain unchanged.
+After the first successful game download, cached game files and scripts work offline. The archive includes all 26 repository scripts. Bundled newer versions replace existing files only when script updates are enabled. Existing activation choices are retained.
 
 The application data location normally is:
 
@@ -30,49 +44,51 @@ The application data location normally is:
 - macOS: `~/Library/Application Support/pokeclicker-desktop`
 - Linux: `$XDG_CONFIG_HOME/pokeclicker-desktop` or `~/.config/pokeclicker-desktop`
 
-The exact directory is printed in the main-process log. It contains `scripts`, `custom-scripts`, `settings.ini` and the client's game/save storage. Game paths use native file loading, including spaces, accents and `#` characters. Successful save exports remember their destination directory in `settings.ini` for the next session. Cancelled exports do not replace it. A directory that no longer exists falls back to the native save dialog's default.
+The exact directory is printed in the main-process log. It contains `scripts`, `custom-scripts`, `settings.ini`, cached game files and Chromium's save storage. Back up the whole directory while the client is closed. A launcher or platform change may use another profile, so retain an exported save as well.
+
+Game paths use native file loading, including spaces, accents and `#`. Successful save exports remember their directory in `settings.ini`. Cancelled exports do not replace it. Missing directories fall back to the native save dialog's default.
 
 ## User-added scripts and multiple windows
 
-Put additional `.js` files in `custom-scripts`. They default to enabled. Their existing first-dot toggle keys are migrated to separate `desktopUserScript:<filename>` keys on first use, preserving explicit disabled states. Each custom file then has its own toggle, even if its name overlaps a downloaded script. Each script runs in a separate function scope so top-level `const` declarations cannot collide.
+Put trusted additional `.js` files in `custom-scripts`. They default to enabled. Legacy first-dot choices migrate to separate `desktopUserScript:<filename>` keys without changing unrelated game storage. Each file has its own toggle and function scope. Symbolic links in script locations are rejected.
 
-Each window loads the scripts once per document. A failing script does not stop the following scripts or prevent the game from starting. A reload invalidates pending injection into the old document. Shared cache updates are serialized across windows. The client's native save-slot behavior is unchanged: use different saves in concurrent windows to avoid competing game saves.
+Each window loads scripts once per document. One failing script does not prevent subsequent scripts or the game from starting. Reloading invalidates pending injection into the old document. Cache updates are serialized across windows. Use separate save slots in concurrent windows to avoid competing saves.
 
-An initialization error inside a userscript can still be reported by that script after the loader finishes. Loader checks do not establish that every script feature works in every game context. Disabling a script and reloading is preferable to deleting application data or running Script Fixer Upper indiscriminately.
+A userscript can report its own initialization failure after the loader completes. Disable the affected script and reload before attempting broader resets. Script Fixer Upper resets only this collection's known preferences and preserves unknown keys, saves, backups and activation/update choices. It disables itself after confirmation.
+
+## Security boundaries
+
+The review on 2026-10-27 covered first-party sources, shipped dependencies, build automation, repository history and GitHub settings. Dependency audits returned zero known vulnerabilities. Dependency files were compared with their locked npm tarballs. Secret scanning, push protection and vulnerability alerts are enabled on this fork. Automated checks run on pull requests and pushes to `master`.
+
+The renderer has no Node integration, uses context isolation and Chromium's sandbox, keeps web security enabled, denies permissions and webviews, and blocks unapproved navigation, popups and local-file access. Selected HTTPS help destinations open in the system browser. Discord activity fields are bounded before being passed to the native integration. The initial setup page no longer loads analytics.
+
+The content security policy disallows remote JavaScript, frames, plug-ins and form submissions. It retains inline JavaScript and `eval` for the game's inline handlers and Knockout bindings. This is not protection against every script injection inside the game. Enabled userscripts and the downloaded game remain trusted code with access to game saves. Custom scripts can change or delete game data.
+
+HTTPS and Git blob checks detect wrong locations, truncated content and mismatches with the listing. They do not authenticate a release independently of GitHub or protect against a compromised trusted publisher. The game follows the official repository's `master` archive, not a separately signed release. Keep Electron and dependencies maintained after this review.
+
+Installation uses two directory renames. A process crash or power failure between them can leave the old game in `.pokeclicker-update-*/previous` without an active game directory. An ordinary error rolls back automatically, but crash recovery is not transactional. Keep any retained recovery directory, close the client and restore its `previous` directory to `pokeclicker-master` if needed. Save storage is separate. Local malware running as the same OS user and concurrent filesystem tampering are outside this review's protection model.
+
+Native macOS testing used Electron 45.0.0 and the real game 0.10.26 in an isolated profile. It checked startup, offline reload, file-access restrictions, navigation/popups, denied permissions and renderer isolation. Earlier native checks exercised save export and multiple windows, but these do not establish every combination on the new runtime. Windows/Linux GUI behavior, live Discord connectivity and Discord account-linking flows remain unverified. Browser redirects and embedded login flows may be blocked by the navigation policy.
 
 ## Build and checks
 
-From the repository root:
+From the repository root, with Node.js 22.12 or newer:
 
 ```sh
 npm ci
 npm test
 npm run build:desktop
+npm test
+npm audit
+npm audit --prefix desktop/app_src --omit=optional
 ```
 
-The build copies `desktop/app_src` into `.local/desktop-build`, adds the current root/custom userscripts and packages `desktop/app.asar` with the pinned `@electron/asar` dependency. Do not edit the generated archive directly. The checked-in archive must be rebuilt after changing desktop sources or bundled scripts.
+The build copies `desktop/app_src` into `.local/desktop-build`, adds current userscripts and packages `desktop/app.asar` with pinned `@electron/asar`. Rebuild after source or bundled-script changes. Tests compare archive contents with sources and notices. GitHub checks also rebuild the archive and check reproducibility on Linux.
 
-Automated tests cover malformed settings, offline fallback, failed updates, disabled updates, downgrades, script isolation, stale navigation, update-request timing, custom-toggle migration and remembered exports. The Electron smoke test additionally exercised the packaged archive, a copied 0.10.26 save, reload, a secondary window, an accented data path and a native export. It does not certify every script or every region of the game.
+Production dependencies are pinned in [package-lock.json](app_src/package-lock.json) and tracked for offline packaging. To restore them, run `npm run deps:desktop`, then rebuild and test. This install omits optional native fallbacks and skips lifecycle scripts. Discord protocol registration uses Electron's built-in API. Generated command launchers and npm's hidden install cache are excluded from the archive.
 
 ## Licenses and provenance
 
-The userscripts retain their original credits and GPL-3.0 notices. The build includes the repository's full `LICENSE` as `LICENSE-GPL-3.0.txt` in `app.asar`, alongside [component notices](app_src/NOTICES.md). The upstream desktop package declares ISC and credits RedSparr0w. Dependencies retain their individual license files.
+Userscripts retain original credits and GPL-3.0 notices. The archive includes the repository's full license as `LICENSE-GPL-3.0.txt`, alongside [component notices](app_src/NOTICES.md). The upstream desktop package declares ISC and credits RedSparr0w. Dependencies retain individual license files. These notices do not relicense third-party components.
 
-Fork modifications and packaging were updated on 2026-10-27 by Axxxxpirine. Editable desktop sources are in [app_src](app_src), userscripts are in the repository root and `custom`, and [the build script](../scripts/build-desktop.cjs) reproduces the archive. Use sources from the same repository revision as the archive.
-
-## Dependency maintenance
-
-Desktop 2.2.2 pins its production dependency tree in [package-lock.json](app_src/package-lock.json). It includes adm-zip 0.6.1 and ws 7.5.13 and removes the unused electron-updater dependency tree. The audited shipped npm packages reported no known vulnerabilities on 2026-10-27. The Electron executable is supplied by the official client and is outside this package audit.
-
-To refresh the bundled files from the lockfile, run these commands from the repository root:
-
-```sh
-npm run deps:desktop
-npm audit --prefix desktop/app_src --omit=optional
-npm run build:desktop
-npm test
-```
-
-The install omits optional native fallbacks and skips package lifecycle scripts. Discord protocol registration uses Electron's built-in API. Generated command launchers and npm's hidden install cache are excluded from the archive. Keep the installed dependency files, lockfile and rebuilt archive together in a change. Packaging tests check every bundled dependency file against its source and reject leftover dependencies.
-
-The 2.2.2 archive also passed a hidden Electron 21.3.1/macOS smoke test with Node 16.16.0: ZIP extraction, offline startup, two document loads, all 26 bundled scripts discovered, and native Discord protocol registration. The test used an isolated minimal game fixture, blocked networking and suppressed Discord login. It did not change a user save or validate Windows/Linux or live Discord connectivity.
+Fork modifications and packaging were updated on 2026-10-27 by Axxxxpirine. Editable sources are in [app_src](app_src), the repository root and `custom`. The [build script](../scripts/build-desktop.cjs) reproduces the archive. Use sources from the same revision as the archive.

@@ -5,7 +5,7 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.6.1
+// @version       3.6.2
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -1260,7 +1260,7 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('enhancedautoclicker') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('enhancedautoclicker') ?? (localStorage.getItem('enhancedautoclicker') === 'true'))) {
     (!App.isUsingClient ? unsafeWindow : window).EnhancedAutoClicker = EnhancedAutoClicker;
     loadEpheniaScript('enhancedautoclicker', () => EnhancedAutoClicker.initAutoClicker(), () => EnhancedAutoClicker.initOverrides());
 }

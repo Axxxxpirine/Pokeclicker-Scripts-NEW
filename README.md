@@ -2,21 +2,21 @@
 
 Independent GPL-3.0 fork of [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts). Original authors, credits and license are preserved.
 
-## L1 compatibility update — 26 October 2026
+## L1 compatibility and L3 options — 26 October 2026
 
 Targets Pokéclicker **0.10.26**. The five updated scripts use this fork for future updates. Other scripts and the original documentation below have not been requalified.
 
 | Script | Version | Changes |
 | --- | --- | --- |
 | [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Current mine API, one action per second, Chisel/Hammer, native Auto Restart, optional sale respects locked items |
-| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.1.5 | Visible controls, bounded hatch loop, obsolete fossil incubation disabled |
-| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.7.4 | Replant reads current plot berry data |
+| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.2.0 | Strict filters, validated priority IDs with fair rotation, bounded hatch loop |
+| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.8.0 | Wanderer capture and persistent stop timer, current replant API |
 | [Auto Safari Zone](custom/autosafarizone.user.js) | 1.2.5 | Current berry inventory, restart after unreachable paths, isolated encounter tiles |
 | [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Pirate artwork, no false warning caused by the number of events |
 
-The game's underground refactor removed energy restores and the old survey/skip mechanics. Auto Mine now waits for tool durability to recover and follows the game's **Auto Restart** setting. It avoids bombs because they can destroy treasures. Fossils must now be revived through the game's town traders, so Auto Fossil and Shiny Fossils are disabled with an explanation. Existing preferences are retained.
+The game's underground refactor removed energy restores and the old survey/skip mechanics. Auto Mine now waits for tool durability to recover and follows the game's **Auto Restart** setting. It avoids bombs because they can destroy treasures. Fossils must now be revived through the game's town traders, so Auto Fossil and Shiny Fossils are disabled with an explanation. Existing preferences are retained. L3 adds independent wanderer capture, a persistent farm stop timer, strict hatchery filters and validated priority IDs with rotation.
 
-Run regression tests with `npm ci` then `npm test` (Node.js 18 or later). Tests cover initialization, start/stop, tool availability, protected sales, bounded hatch processing, replanting, Safari paths and berry reserves, and event toggling.
+Run regression tests with `npm ci` then `npm test` (Node.js 18 or later). Tests cover initialization, start/stop, tool availability, protected sales, bounded hatch processing, replanting, Safari paths and berry reserves, event toggling, timer expiry/reload/cancellation, strict filters and fair priority scheduling.
 
 Browser checks use a separate local copy of the real game and a restored test save. They do not update the installed Zen/Tampermonkey scripts. To try a branch, open the selected script's **Raw** view and replace its existing Tampermonkey entry. Download/update URLs point to this fork's `master` branch for releases after merging.
 
@@ -260,7 +260,7 @@ The Auto Dungeon feature is found below the Auto Click button. Some notes about 
 ## Enhanced Auto Hatchery (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/enhancedautohatchery.user.js">enhancedautohatchery.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/enhancedautohatchery.user.js">One-Click Install</a>)
 This script is based on one created by <b>Ivan Lay & Drak</b> which [can be found over here](//greasyfork.org/en/scripts/432768-auto-hatchery-edit-pokeclicker-com).
 
-The Auto Hatchery automatically hatches eggs and places new eggs/fossils in the hatchery. 
+The Auto Hatchery automatically hatches completed eggs and places eligible Pokémon or store eggs in free hatchery slots. Fossil incubation has been removed from the game, so its legacy buttons remain disabled.
 
 ![](https://i.imgur.com/VpL6TTr.png)
 
@@ -271,10 +271,14 @@ This button on the main-screen hatchery display toggles the Auto Hatchery.
 These buttons inside the hatchery control the various Auto Hatchery modes, which activate in the following order.
 
 • PKRS Mode tries to spread Pokerus. If you have an uninfected pokemon and a contagious pokemon that share a type, it will put them in the hatchery together.<br/>
-• Auto Egg hatches eggs (the items), if you have any.<br/>
-• Auto Fossil revives fossils, if you have any. When in Shiny Fossils mode, it will ignore fossils for which you already have the corresponding shiny.<br/>
+• Auto Egg hatches eggs (the items), if you have any. Filter Only pauses this mode because a random store egg cannot be checked against Pokémon filters.<br/>
+• Auto Fossil and Shiny Fossils are unavailable in the current game. Use native town traders manually.<br/>
 
-If none of the above modes are enabled or have targets, the Auto Hatchery will select the first pokemon (in hatchery sort order) that matches your hatchery filters. If none match, it will select the first possible pokemon.
+If none of the above modes have targets, the hatchery uses your saved priority IDs, alternating with other eligible Pokémon in hatchery sort order. Priorities rotate through IDs and their matching forms. Without priorities, the first eligible Pokémon matching your hatchery filters is selected, falling back to the party when no match is available.
+
+**Filter Only** disables that fallback and applies the current hatchery filters to priorities and both Pokérus partners. An empty filter waits instead of loading an unrelated Pokémon. Already incubating eggs still hatch. Pokérus pairing needs two free manual slots and retains precedence over priorities.
+
+**Priority IDs** accepts comma or space separated IDs. For example, `479` includes all Rotom forms, whereas `479.01` selects Heat Rotom exactly. Unknown or malformed IDs reject the whole edit without changing the saved list. Empty input clears the list. Priorities and Filter Only persist across reloads. Priority IDs choose Pokémon for free egg slots and do not automatically fill the native waiting queue.
 
 <hr>
 
@@ -311,14 +315,17 @@ As of 1.1 this also includes 2 more additional features into the Treasures tab o
   
 <a name="simple-auto-farmer"></a>
 ## Simple Auto Farmer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/main/simpleautofarmer.user.js">simpleautofarmer.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/simpleautofarmer.user.js">One-Click Install</a>)
-This script is a simple Auto Farmer which adds 4 new buttons below the Plant and Harvest all buttons as shown:<br>
+This script is a simple Auto Farmer which adds five mode buttons and a stop timer below the Plant and Harvest all buttons as shown:<br>
 
 ![](https://i.imgur.com/ei7lR95.png)
 
 • Auto Farm will plant the berry that you have selected.<br/>
 • Auto Harvest will harvest all ripe berries.<br/>
 • Auto Replant will wait for ripe berries to be close to withering before harvesting, then replant the same kind of berry in that plot. This can be especially useful for mutating berries.<br/>
-• Auto Mulch will wait for mulch to be close to running out, then use the same kind of mulch on that plot.
+• Auto Mulch will wait for mulch to be close to running out, then use the same kind of mulch on that plot.<br/>
+• Auto Catch handles farm wanderers using the native capture rules and ball settings. It works independently and checks wanderers before harvesting.
+
+**Stop timer:** enter 1–10080 whole minutes and choose Start timer. It does not enable any mode. The deadline survives reloads and turns all five modes OFF before further actions when it expires. A background or sleeping tab checks the elapsed wall-clock time as soon as it resumes. Cancel timer preserves the active modes. The saved duration remains available for the next timer. A native capture already in progress may finish after Auto Catch stops.
 
 The Auto Farmer runs even while the farm window is closed. It also now saves your berry selection when the game restarts, to avoid farming interruptions.
 

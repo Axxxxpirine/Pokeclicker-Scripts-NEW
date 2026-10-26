@@ -2,10 +2,10 @@
 // @name          [Pokeclicker] Enhanced Auto Hatchery
 // @namespace     Pokeclicker Scripts
 // @author        Ephenia (Original/Credit: Drak + Ivan Lay, Optimatum)
-// @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Fossil incubation was removed from the game.
+// @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.1.5
+// @version       3.2.0
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -18,6 +18,8 @@
 // @run-at        document-idle
 // ==/UserScript==
 // Fork compatibility update, 2026-10-26: fixes for Pokéclicker 0.10.26.
+// Filter Only and priority ID concepts: goldhaxx (upstream PR #430).
+// Adapted here with strict filtering, validated input and fair scheduling.
 
 
 var hatchState;
@@ -25,6 +27,11 @@ var eggState;
 var fossilState;
 var shinyFossilState;
 var pkrsState;
+var filterOnlyState;
+var priorityIdList = [];
+var priorityCursor = 0;
+var priorityLastMonIds = new Map();
+var priorityNeedsNormalTurn = false;
 var pkrsHatcherySearchTime = 0;
 var numMonsWithPkrsCached;
 var autoHatcheryCachedList = [];
@@ -39,19 +46,33 @@ function initAutoHatch() {
     </button>`
 
     const autoHatchControls = document.createElement('div');
-    autoHatchControls.className = 'd-flex flex-wrap py-2';
-    autoHatchControls.innerHTML = `<button id="pkrs-mode" class="btn btn-${pkrsState ? 'success' : 'danger'}" style="margin-left:20px;">
+    autoHatchControls.id = 'auto-hatch-controls';
+    autoHatchControls.className = 'd-flex flex-wrap p-2';
+    autoHatchControls.style.gap = '8px';
+    autoHatchControls.innerHTML = `<button id="pkrs-mode" class="btn btn-${pkrsState ? 'success' : 'danger'}" type="button">
     PKRS Mode [${pkrsState ? 'ON' : 'OFF'}]
     </button>
-    <button id="auto-egg" class="btn btn-${eggState ? 'success' : 'danger'}" style="margin-left:20px;">
+    <button id="auto-egg" class="btn btn-${eggState ? 'success' : 'danger'}" type="button">
     Auto Egg [${eggState ? 'ON' : 'OFF'}]
     </button>
-    <button id="auto-fossil" class="btn btn-${fossilState ? 'success' : 'danger'}" style="margin-left:20px;">
+    <button id="auto-fossil" class="btn btn-${fossilState ? 'success' : 'danger'}" type="button">
     Auto Fossil [${fossilState ? 'ON' : 'OFF'}]
     </button>
-    <button id="shiny-fossils" class="btn btn-${shinyFossilState ? 'success' : 'danger'}" style="margin-left:20px;">
+    <button id="shiny-fossils" class="btn btn-${shinyFossilState ? 'success' : 'danger'}" type="button">
     Shiny Fossils [${shinyFossilState ? 'ON' : 'OFF'}]
-    </button>`;
+    </button>
+    <button id="filter-only" type="button" class="btn btn-${filterOnlyState ? 'success' : 'danger'}"
+        title="Only load Pokémon matching the current hatchery filters, including priorities and Pokérus partners. Random store eggs are paused.">
+        Filter Only [${filterOnlyState ? 'ON' : 'OFF'}]
+    </button>
+    <div class="d-flex flex-wrap align-items-center w-100" style="gap:8px">
+        <label for="priority-ids" class="mb-0">Priority IDs</label>
+        <input id="priority-ids" type="text" class="form-control form-control-sm" style="width:220px;max-width:100%"
+            placeholder="149, 123, 479.01" aria-describedby="priority-help priority-status">
+        <button id="priority-save" type="button" class="btn btn-primary btn-sm">Save priorities</button>
+    </div>
+    <small id="priority-help" class="w-100">Comma or space separated. Whole IDs include forms, decimals select one form. Priorities rotate and alternate with other eligible Pokémon. PKRS Mode keeps precedence.</small>
+    <small id="priority-status" class="w-100" role="status"></small>`;
 
     breedingModal.querySelector('.modal-header').after(autoHatchControls);
     for (const id of ['auto-fossil', 'shiny-fossils']) {
@@ -66,6 +87,11 @@ function initAutoHatch() {
     document.getElementById('auto-fossil').addEventListener('click', event => { toggleFossil(event); });
     document.getElementById('shiny-fossils').addEventListener('click', event => { toggleShinyFossil(event); });
     document.getElementById('pkrs-mode').addEventListener('click', event => { togglePKRS(event); });
+
+    document.getElementById('filter-only').addEventListener('click', toggleFilterOnly);
+    document.getElementById('priority-save').addEventListener('click', savePriorityFromInput);
+    loadPriorityIds();
+    renderPriorityIds();
 
     addGlobalStyle('.eggSlot.disabled { pointer-events: unset !important; }');
 
@@ -126,6 +152,70 @@ function togglePKRS(event) {
     localStorage.setItem('pokerusModeState', pkrsState);
 }
 
+function toggleFilterOnly(event) {
+    filterOnlyState = !filterOnlyState;
+    const button = event.currentTarget;
+    button.classList.replace(...(filterOnlyState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
+    button.textContent = `Filter Only [${filterOnlyState ? 'ON' : 'OFF'}]`;
+    localStorage.setItem('filterOnly', filterOnlyState);
+    // A different eligible pool must not inherit an old failed Pokérus search.
+    pkrsHatcherySearchTime = 0;
+    numMonsWithPkrsCached = undefined;
+}
+
+function priorityMatches(mon, id) {
+    return mon.id === id || (Number.isInteger(id) && Math.floor(mon.id) === id);
+}
+
+function parsePriorityIds(text) {
+    const tokens = text.trim().split(/[,\s]+/).filter(Boolean);
+    const ids = [];
+    const known = tokens.length ? pokemonList : [];
+    for (const token of tokens) {
+        const id = Number(token);
+        if (!/^\d+(?:\.\d+)?$/.test(token) || !Number.isFinite(id) || id <= 0 || !known.some(p => priorityMatches(p, id))) {
+            return null;
+        }
+        if (!ids.includes(id)) ids.push(id);
+    }
+    return ids;
+}
+
+function loadPriorityIds() {
+    try {
+        const stored = JSON.parse(localStorage.getItem('priorityMonIds') || '[]');
+        priorityIdList = Array.isArray(stored) && stored.every(id => typeof id === 'number' && Number.isFinite(id))
+            ? (parsePriorityIds(stored.join(',')) || []) : [];
+    } catch {
+        priorityIdList = [];
+    }
+    localStorage.setItem('priorityMonIds', JSON.stringify(priorityIdList));
+}
+
+function renderPriorityIds() {
+    document.getElementById('priority-ids').value = priorityIdList.join(', ');
+    document.getElementById('priority-status').textContent = priorityIdList.length ? `Saved priorities: ${priorityIdList.join(', ')}` : 'No priorities';
+}
+
+function savePriorityFromInput() {
+    const parsed = parsePriorityIds(document.getElementById('priority-ids').value);
+    if (parsed === null) {
+        document.getElementById('priority-status').textContent = 'Invalid or unknown Pokémon ID. Saved priorities unchanged.';
+        return;
+    }
+    priorityIdList = parsed;
+    priorityCursor = 0;
+    priorityLastMonIds.clear();
+    priorityNeedsNormalTurn = false;
+    localStorage.setItem('priorityMonIds', JSON.stringify(priorityIdList));
+    renderPriorityIds();
+}
+
+function matchesAutoHatchFilter(mon) {
+    // The game's displayed sorted list is rate limited. Check the current filter too.
+    return !filterOnlyState || (autoHatcheryCachedList.includes(mon) && mon.matchesHatcheryFilters());
+}
+
 function bindAutoHatcher() {
     const progressEggsOld = Breeding.prototype.progressEggs;
     Breeding.prototype.progressEggs = function progressEggs(...args) {
@@ -141,6 +231,7 @@ function autoHatcher() {
     if (!App.game.breeding.canAccess()) {
         return;
     }
+    if (filterOnlyState) autoHatcheryCachedList = BreedingController.hatcherySortedFilteredList();
     // Attempt to hatch eggs
     for (let i = App.game.breeding.eggSlots - 1; i >= 0; i--) {
         App.game.breeding.hatchPokemonEgg(i);
@@ -160,7 +251,7 @@ function autoHatcher() {
         // Attempts enabled autoHatch methods in order until one succeeds
         // (subsequent autoHatch methods aren't called due to short-circuiting)
         let success = pkrsState && autoHatchPkrs();
-        success ||= eggState && autoHatchEgg();
+        success ||= !filterOnlyState && eggState && autoHatchEgg();
         success ||= fossilState && autoHatchFossil();
         success ||= autoHatchMon();
         if (!success) {
@@ -174,12 +265,16 @@ function autoHatchPkrs() {
     if (!App.game.keyItems.hasKeyItem(KeyItemType.Pokerus_virus)) {
         return false;
     }
-    // No need to search if we already know there aren't party members to infect
-    if (numMonsWithPkrsCached == App.game.party.caughtPokemon.length) {
+    const breeding = App.game.breeding;
+    const helpers = breeding.hatcheryHelpers.hired();
+    const freeSlots = breeding.eggList.slice(0, breeding.eggSlots).filter((egg, index) => egg().isNone() && !helpers[index]).length;
+    if (freeSlots < 2) return false;
+    // Filter changes may make a previously unavailable pair eligible.
+    if (!filterOnlyState && numMonsWithPkrsCached == App.game.party.caughtPokemon.length) {
         return false;
     }
     // If we couldn't find a uninfected/contagious pair, wait a while before trying again
-    if (Date.now() - pkrsHatcherySearchTime < delayAfterFailure) {
+    if (!filterOnlyState && Date.now() - pkrsHatcherySearchTime < delayAfterFailure) {
         return false;
     }
     let uninfectedMono = {};
@@ -191,7 +286,7 @@ function autoHatchPkrs() {
     // Ideally the uninfected mon is dual-type to accelerate future spreading
     for (let mon of App.game.party.caughtPokemon) {
         infectedCount += mon.pokerus > GameConstants.Pokerus.Uninfected;
-        if (mon.breeding || mon.level < 100) {
+        if (!mon.isHatchable() || !matchesAutoHatchFilter(mon)) {
             continue;
         }
         let checkMatch = false;
@@ -258,15 +353,33 @@ function autoHatchFossil() {
 }
 
 function autoHatchMon() {
-    let toHatch = autoHatcheryCachedList.find(p => p.isHatchable());
-    if (!toHatch) {
-        // Nothing matches the hatchery filters
-        toHatch = App.game.party.caughtPokemon.find(p => p.isHatchable());
+    const filtered = autoHatcheryCachedList.filter(p => p.isHatchable() && matchesAutoHatchFilter(p));
+    const party = App.game.party.caughtPokemon.filter(p => p.isHatchable() && matchesAutoHatchFilter(p));
+    const isPriority = p => priorityIdList.some(id => priorityMatches(p, id));
+    const normal = filtered.find(p => !isPriority(p)) || (!filterOnlyState && party.find(p => !isPriority(p)));
+    // Give other eligible Pokémon a turn between priorities, even across game ticks.
+    if (priorityNeedsNormalTurn && normal && App.game.breeding.addPokemonToHatchery(normal)) {
+        priorityNeedsNormalTurn = false;
+        return true;
     }
-    if (!toHatch) {
-        return false;
+    for (let offset = 0; offset < priorityIdList.length; offset++) {
+        const index = (priorityCursor + offset) % priorityIdList.length;
+        const id = priorityIdList[index];
+        const family = party.filter(p => priorityMatches(p, id));
+        const lastIndex = family.findIndex(p => p.id === priorityLastMonIds.get(id));
+        const mon = family[(lastIndex + 1) % family.length];
+        if (mon && App.game.breeding.addPokemonToHatchery(mon)) {
+            priorityLastMonIds.set(id, mon.id);
+            priorityCursor = (index + 1) % priorityIdList.length;
+            priorityNeedsNormalTurn = true;
+            return true;
+        }
     }
-    return App.game.breeding.addPokemonToHatchery(toHatch);
+    const toHatch = filtered[0] || (!filterOnlyState && party[0]);
+    if (!toHatch) return false;
+    const success = App.game.breeding.addPokemonToHatchery(toHatch);
+    if (success) priorityNeedsNormalTurn = false;
+    return success;
 }
 
 hatchState = loadSetting('autoHatchState', false);
@@ -274,6 +387,7 @@ eggState = loadSetting('autoEgg', false);
 fossilState = loadSetting('autoFossil', false);
 shinyFossilState = loadSetting('shinyFossil', false);
 pkrsState = loadSetting('pokerusModeState', false);
+filterOnlyState = loadSetting('filterOnly', false);
 
 function loadSetting(key, defaultVal) {
     var val;

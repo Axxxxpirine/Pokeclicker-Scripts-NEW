@@ -5,12 +5,12 @@
 // @description   Removes the limit for the number of quests you can do at once and auto completes/starts new ones.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       2.0.3
+// @version       2.1.0
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/autoquestcompleter.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/autoquestcompleter.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autoquestcompleter.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autoquestcompleter.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
@@ -34,6 +34,13 @@ function initAutoQuest() {
     }
     var questResetState = loadSetting('autoQuestResetState', false);
     var questResetTimeout;
+    let refreshBudget = loadSetting('autoQuestRefreshBudget', 0);
+    let moneyReserve = loadSetting('autoQuestMoneyReserve', 0);
+    if (!Number.isSafeInteger(refreshBudget) || refreshBudget < 0) refreshBudget = 0;
+    if (!Number.isSafeInteger(moneyReserve) || moneyReserve < 0) moneyReserve = 0;
+    let refreshSpent = 0;
+    let refreshing = false;
+    let lastRefreshAttempt = -Infinity;
 
     createSettings();
 
@@ -81,6 +88,25 @@ function initAutoQuest() {
         resetTimerElem.querySelector('#input-autoQuestResetTimer-submit').addEventListener('click', () => { changeQuestResetTimer(); })
         settingsBody.appendChild(resetTimerElem);
         
+        for (const [key, label, value] of [
+            ['autoQuestRefreshBudget', 'Paid refresh money budget per session (0 = free only)', refreshBudget],
+            ['autoQuestMoneyReserve', 'Money reserve after a paid refresh', moneyReserve],
+        ]) {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td class="p-2"><label for="input-${key}">${label}</label></td><td class="p-2"><input id="input-${key}" class="form-control" type="number" min="0" step="1"></td>`;
+            const input = row.querySelector('input'); input.value = value;
+            input.addEventListener('change', () => {
+                const next = Number(input.value);
+                if (!Number.isSafeInteger(next) || next < 0) { input.value = key === 'autoQuestRefreshBudget' ? refreshBudget : moneyReserve; return; }
+                if (key === 'autoQuestRefreshBudget') refreshBudget = next; else moneyReserve = next;
+                localStorage.setItem(key, JSON.stringify(next));
+            });
+            settingsBody.appendChild(row);
+        }
+        const refreshStatus = document.createElement('tr');
+        refreshStatus.innerHTML = '<td colspan="2" id="auto-quest-budget-status" role="status">Paid refresh spent: 0. Budget resets when Auto is started or the game reloads.</td>';
+        settingsBody.appendChild(refreshStatus);
+
         // Quest types filtering
         let info = document.createElement('tr');
         info.innerHTML = `<td class="p-2" colspan="2"><label class="m-0">Preferred quest types</label></td>`;
@@ -102,6 +128,7 @@ function initAutoQuest() {
     function toggleAutoQuest() {
         autoQuestEnabled = !autoQuestEnabled;
         if (autoQuestEnabled) {
+            refreshSpent = 0;
             refreshQuestSubscriptions();
         } else {
             clearQuestSubscriptions();
@@ -178,7 +205,7 @@ function initAutoQuest() {
             }
         });
 
-        beginQuests();
+        beginQuests(false);
         resetQuestResetTimeout();
     }
 
@@ -191,12 +218,38 @@ function initAutoQuest() {
 
     function resetQuestResetTimeout() {
         clearTimeout(questResetTimeout);
-        if (questResetState) {
-            questResetTimeout = setTimeout(() => { App.game.quests.refreshQuests() }, questResetTimer * GameConstants.MINUTE);
+        if (autoQuestEnabled && questResetState) {
+            questResetTimeout = setTimeout(() => {
+                requestQuestRefresh();
+                resetQuestResetTimeout();
+            }, questResetTimer * GameConstants.MINUTE);
         }
     }
 
-    function beginQuests() {
+    function requestQuestRefresh() {
+        if (!autoQuestEnabled || refreshing || Date.now() - lastRefreshAttempt < 1000) return false;
+        const free = App.game.quests.freeRefresh();
+        const cost = free ? 0 : App.game.quests.getRefreshCost().amount;
+        const wallet = App.game.wallet.currencies[GameConstants.Currency.money]();
+        if (!Number.isFinite(cost) || cost < 0 || (cost > 0 && (refreshSpent + cost > refreshBudget || wallet - cost < moneyReserve))) {
+            document.getElementById('auto-quest-budget-status').textContent = `Refresh paused: budget or reserve. Paid refresh spent: ${refreshSpent}.`;
+            return false;
+        }
+        lastRefreshAttempt = Date.now();
+        refreshSpent += cost;
+        refreshing = true;
+        try {
+            // Native refresh can be async. Keep the guard until it settles.
+            const result = App.game.quests.refreshQuests(free, false);
+            if (result?.then) result.catch(error => console.error('[Auto Quests]', error)).finally(() => { refreshing = false; });
+            else refreshing = false;
+        } catch (error) { refreshing = false; console.error('[Auto Quests]', error); }
+        document.getElementById('auto-quest-budget-status').textContent = `Paid refresh spent: ${refreshSpent} / ${refreshBudget}.`;
+        return true;
+    }
+
+    function beginQuests(allowRefresh = true) {
+        if (!autoQuestEnabled) return;
         var preferredQuests = [];
         var ignoredQuests = [];
         App.game.quests.incompleteQuests().forEach((quest) => {
@@ -220,8 +273,8 @@ function initAutoQuest() {
 
         if (!App.game.quests.incompleteQuests().some((quest) => !ignoredQuestTypes.includes(quest.constructor.name))) {
             // Only filtered quests left
-            if (App.game.quests.canAffordRefresh() && ignoredQuestTypes.length < Object.keys(QuestHelper.quests).length) {
-                App.game.quests.refreshQuests();
+            if (allowRefresh && ignoredQuestTypes.length < Object.keys(QuestHelper.quests).length) {
+                requestQuestRefresh();
             }
         }
     }

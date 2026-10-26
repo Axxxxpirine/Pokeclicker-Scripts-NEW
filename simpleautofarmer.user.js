@@ -2,10 +2,10 @@
 // @name          [Pokeclicker] Simple Auto Farmer
 // @namespace     Pokeclicker Scripts
 // @author        Ephenia / Akwawa / perkasthor / davide-lugli (update 1.6) / Optimatum
-// @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture and a persistent stop timer share the farm loop.
+// @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture, a stop timer, manual mutation plans and bounded pre-maturity Rich Mulch share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.8.0
+// @version       1.9.0
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -30,6 +30,29 @@ function initAutoFarm() {
     var replantState;
     var mulchState;
     var catchState;
+    // Spending modes require a fresh opt-in after loading. Their plans/settings persist.
+    let planState = false;
+    let richState = false;
+    let richUsed = 0;
+    localStorage.setItem('autoFarmPlanState', false);
+    localStorage.setItem('autoFarmRichState', false);
+    const farming = App.game.farming;
+    const plotCount = Math.min(25, farming.plotList.length);
+    const validBerry = id => Number.isInteger(id) && id >= 0 && typeof farming.berryInventory?.[id] === 'function'
+        && typeof BerryType !== 'undefined' && typeof BerryType[id] === 'string';
+    function readSaved(key, fallback) {
+        try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+    }
+    function boundedSetting(key, fallback, min, max) {
+        const value = readSaved(key, fallback);
+        return Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+    }
+    const savedPlan = readSaved('autoFarmMutationPlan', []);
+    const mutationPlan = Array.from({length: plotCount}, (_, index) => Array.isArray(savedPlan) && validBerry(savedPlan[index]) ? savedPlan[index] : -1);
+    let planReserve = boundedSetting('autoFarmPlanReserve', 10, 0, 1000000000);
+    let richReserve = boundedSetting('autoFarmRichReserve', 10, 0, 1000000000);
+    let richCap = boundedSetting('autoFarmRichCap', 25, 1, 10000);
+    let richSeconds = boundedSetting('autoFarmRichSeconds', 30, 1, 3600);
     var stopAt = JSON.parse(localStorage.getItem('autoFarmStopAt'));
     if (!Number.isSafeInteger(stopAt) || stopAt < 0) {
         stopAt = 0;
@@ -117,10 +140,157 @@ function initAutoFarm() {
             checkFarmDeadline();
             toggleFarmLoop();
         };
+        createPlanMenu(elemAF);
+    }
+
+    function createPlanMenu(host) {
+        const panel = document.createElement('details');
+        panel.className = 'py-2';
+        panel.innerHTML = `<summary>Mutation plan and Rich Mulch</summary>
+            <p class="small">Manual 5×5 plan, matching the farm from top left to bottom right. Choose parent berries and leave mutation spaces untouched. Existing plants are never removed. The plan switches Auto Plant, Harvest and Replant off. Farmhands remain independent.</p>
+            <div id="auto-farm-plan-grid" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px"></div>
+            <div id="auto-farm-plan-settings" class="py-2"></div>
+            <button id="auto-farm-plan-toggle" type="button" class="btn btn-sm btn-danger">Mutation plan [OFF]</button>
+            <p id="auto-farm-plan-status" class="small" role="status">Settings are saved. Enable the plan each session.</p>
+            <hr><p class="small">Apply one Rich Mulch to an unmulched plant shortly before maturity. Locked plots and other mulch are left untouched. Auto Mulch and this mode are mutually exclusive. The cap resets only when you enable this mode again.</p>
+            <div id="auto-farm-rich-settings"></div>
+            <button id="auto-farm-rich-toggle" type="button" class="btn btn-sm btn-danger">Rich Mulch [OFF]</button>
+            <span id="auto-farm-rich-status" class="small" role="status"></span>`;
+        host.appendChild(panel);
+        const grid = document.getElementById('auto-farm-plan-grid');
+        for (let index = 0; index < plotCount; index++) {
+            const label = document.createElement('label');
+            label.className = 'small mb-0';
+            label.textContent = `Plot ${index + 1}`;
+            const select = document.createElement('select');
+            select.id = `auto-farm-plan-${index}`;
+            select.dataset.farmPlanPlot = index;
+            select.className = 'form-control form-control-sm';
+            select.add(new Option('Leave untouched', '-1'));
+            for (let berry = 0; berry < (farming.berryInventory?.length ?? 0); berry++) {
+                if (validBerry(berry)) select.add(new Option(BerryType[berry], String(berry)));
+            }
+            select.value = mutationPlan[index];
+            select.onchange = () => {
+                const berry = Number(select.value);
+                if (select.value !== '' && (berry === -1 || validBerry(berry))) {
+                    mutationPlan[index] = berry;
+                    localStorage.setItem('autoFarmMutationPlan', JSON.stringify(mutationPlan));
+                } else select.value = mutationPlan[index];
+            };
+            label.appendChild(select);
+            grid.appendChild(label);
+        }
+        const numberInput = (parent, id, title, key, value, min, max, save) => {
+            const label = document.createElement('label');
+            label.className = 'small mr-2';
+            label.textContent = `${title} `;
+            const input = document.createElement('input');
+            Object.assign(input, {id, type: 'number', min, max, step: 1, value});
+            input.style.width = '95px';
+            input.onchange = () => {
+                const next = Number(input.value);
+                if (input.value.trim() === '' || !Number.isSafeInteger(next) || next < min || next > max) {
+                    input.value = value;
+                    return;
+                }
+                value = next;
+                save(next);
+                localStorage.setItem(key, next);
+                updateRichStatus();
+            };
+            label.appendChild(input);
+            document.getElementById(parent).appendChild(label);
+        };
+        numberInput('auto-farm-plan-settings', 'auto-farm-plan-reserve', 'Keep each berry', 'autoFarmPlanReserve', planReserve, 0, 1000000000, value => planReserve = value);
+        numberInput('auto-farm-rich-settings', 'auto-farm-rich-seconds', 'Seconds before maturity', 'autoFarmRichSeconds', richSeconds, 1, 3600, value => richSeconds = value);
+        numberInput('auto-farm-rich-settings', 'auto-farm-rich-reserve', 'Keep Rich Mulch', 'autoFarmRichReserve', richReserve, 0, 1000000000, value => richReserve = value);
+        numberInput('auto-farm-rich-settings', 'auto-farm-rich-cap', 'Units per activation', 'autoFarmRichCap', richCap, 1, 10000, value => richCap = value);
+        document.getElementById('auto-farm-plan-toggle').onclick = () => {
+            if (!planState) {
+                if (plantState) autoPlantToggle();
+                if (harvestState) autoHarvestToggle();
+                if (replantState) autoReplantToggle();
+            }
+            setPlanState(!planState);
+        };
+        document.getElementById('auto-farm-rich-toggle').onclick = () => {
+            if (!richState) {
+                if (mulchState) autoMulchToggle();
+                richUsed = 0;
+            }
+            setRichState(!richState);
+        };
+        updateRichStatus();
+    }
+
+    function setPlanState(enabled) {
+        planState = enabled;
+        localStorage.setItem('autoFarmPlanState', enabled);
+        const button = document.getElementById('auto-farm-plan-toggle');
+        button.textContent = `Mutation plan [${enabled ? 'ON' : 'OFF'}]`;
+        button.className = `btn btn-sm btn-${enabled ? 'success' : 'danger'}`;
+        toggleFarmLoop();
+    }
+
+    function setRichState(enabled) {
+        richState = enabled;
+        localStorage.setItem('autoFarmRichState', enabled);
+        const button = document.getElementById('auto-farm-rich-toggle');
+        button.textContent = `Rich Mulch [${enabled ? 'ON' : 'OFF'}]`;
+        button.className = `btn btn-sm btn-${enabled ? 'success' : 'danger'}`;
+        updateRichStatus();
+        toggleFarmLoop();
+    }
+
+    function updateRichStatus() {
+        document.getElementById('auto-farm-rich-status').textContent = `${richUsed}/${richCap} units used${richUsed >= richCap ? ' — cap reached' : ''}`;
+    }
+
+    function doMutationPlan() {
+        if (typeof farming.plant !== 'function' || (typeof farming.canAccess === 'function' && !farming.canAccess())) return;
+        let planted = 0;
+        for (let index = 0; index < plotCount; index++) {
+            const plot = farming.plotList[index];
+            const berry = mutationPlan[index];
+            if (!validBerry(berry) || !plot || plot.isUnlocked !== true || plot.isSafeLocked || plot.berry !== -1) continue;
+            const stock = farming.berryInventory[berry]();
+            if (!Number.isSafeInteger(stock) || stock <= planReserve) continue;
+            farming.plant(index, berry);
+            if (plot.berry === berry) planted++;
+        }
+        document.getElementById('auto-farm-plan-status').textContent = `${planted} planted this check. Occupied, protected and unassigned plots left untouched. Berry reserve: ${planReserve}.`;
+    }
+
+    function doRichMulch() {
+        if (typeof MulchType.Rich_Mulch !== 'number' || typeof farming.addMulch !== 'function'
+            || typeof farming.getGrowthMultiplier !== 'function' || typeof farming.getMulchDurationMultiplier !== 'function'
+            || typeof GameConstants === 'undefined' || (typeof farming.canAccess === 'function' && !farming.canAccess())) return;
+        const mulch = MulchType.Rich_Mulch;
+        const inventory = farming.mulchList?.[mulch];
+        if (typeof inventory !== 'function') return;
+        const duration = GameConstants.MULCH_USE_TIME * farming.getMulchDurationMultiplier();
+        if (!Number.isFinite(duration) || duration <= 0) return;
+        for (let index = 0; index < plotCount && richUsed < richCap; index++) {
+            const plot = farming.plotList[index];
+            if (!plot || plot.isUnlocked !== true || plot.isSafeLocked || plot.berry < 0 || plot.mulch !== MulchType.None) continue;
+            const maturity = plot.berryData?.growthTime?.[3];
+            const speed = typeof plot.getGrowthMultiplier === 'function' ? farming.getGrowthMultiplier() * plot.getGrowthMultiplier() : NaN;
+            if (!Number.isFinite(maturity) || !Number.isFinite(plot.age) || !Number.isFinite(speed) || speed <= 0) continue;
+            const secondsLeft = (maturity - plot.age) / speed;
+            if (secondsLeft <= 0 || secondsLeft > richSeconds || secondsLeft >= duration) continue;
+            const stock = inventory();
+            if (!Number.isSafeInteger(stock) || stock <= richReserve) break;
+            if (typeof farming.canMulch === 'function' && !farming.canMulch(index, mulch)) continue;
+            farming.addMulch(index, mulch, 1);
+            const spent = stock - inventory();
+            if (Number.isFinite(spent) && spent > 0) richUsed += spent;
+        }
+        updateRichStatus();
     }
 
     function toggleFarmLoop() {
-        if (plantState || replantState || harvestState || mulchState || catchState || stopAt) {
+        if (plantState || replantState || harvestState || mulchState || catchState || planState || richState || stopAt) {
             if (!autoFarmLoop) {
                 autoFarmLoop = setInterval(autoFarmTick, 1000);
             }
@@ -134,6 +304,8 @@ function initAutoFarm() {
         if (stopAt && Date.now() >= stopAt) {
             plantState = harvestState = replantState = mulchState = catchState = false;
             stopAt = 0;
+            setPlanState(false);
+            setRichState(false);
             localStorage.setItem('autoFarmStopAt', 0);
             for (const name of ['plant', 'harvest', 'replant', 'mulch', 'catch']) {
                 localStorage.setItem(`auto${name[0].toUpperCase() + name.slice(1)}State`, false);
@@ -167,7 +339,10 @@ function initAutoFarm() {
                 if (plot.wanderer) App.game.farming.handleWanderer(plot);
             }
         }
-        if (replantState) {
+        if (richState) doRichMulch();
+        if (planState) {
+            doMutationPlan();
+        } else if (replantState) {
             doReplant();
         } else {
             if (harvestState) {
@@ -184,6 +359,7 @@ function initAutoFarm() {
 
     function autoPlantToggle() {
         plantState = !plantState;
+        if (plantState && planState) setPlanState(false);
         localStorage.setItem("autoPlantState", plantState);
         toggleFarmLoop();
         if (replantState) {
@@ -207,6 +383,7 @@ function initAutoFarm() {
 
     function autoHarvestToggle() {
         harvestState = !harvestState;
+        if (harvestState && planState) setPlanState(false);
         localStorage.setItem("autoHarvestState", harvestState);
         toggleFarmLoop();
         if (replantState) {
@@ -230,6 +407,7 @@ function initAutoFarm() {
 
     function autoReplantToggle() {
         replantState = !replantState;
+        if (replantState && planState) setPlanState(false);
         localStorage.setItem("autoReplantState", replantState);
         toggleFarmLoop();
         if (plantState) {
@@ -273,6 +451,7 @@ function initAutoFarm() {
 
     function autoMulchToggle() {
         mulchState = !mulchState;
+        if (mulchState && richState) setRichState(false);
         localStorage.setItem("autoMulchState", mulchState);
         toggleFarmLoop();
         let elt = document.getElementById('auto-mulch-toggle');

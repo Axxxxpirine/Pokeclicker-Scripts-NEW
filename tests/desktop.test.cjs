@@ -50,7 +50,7 @@ test('published desktop archive includes license notices and current userscript 
     const asar = require('@electron/asar');
     const repo = path.resolve(__dirname, '..');
     const archive = path.join(repo, 'desktop/app.asar');
-    const read = name => asar.extractFile(archive, name).toString('utf8');
+    const read = name => asar.extractFile(archive, path.normalize(name)).toString('utf8');
     assert.equal(read('LICENSE-GPL-3.0.txt'), fs.readFileSync(path.join(repo, 'LICENSE'), 'utf8'));
     assert.equal(read('NOTICES.md'), fs.readFileSync(path.join(repo, 'desktop/app_src/NOTICES.md'), 'utf8'));
     for (const directory of [repo, path.join(repo, 'custom')]) {
@@ -79,7 +79,7 @@ test('desktop archive dependencies match the lockfile and installed source bytes
             if (entry.isDirectory()) check(relative);
             else {
                 expected.push(`/${relative}`);
-                assert.deepEqual(asar.extractFile(archive, relative), fs.readFileSync(path.join(appRoot, relative)), relative);
+                assert.deepEqual(asar.extractFile(archive, path.normalize(relative)), fs.readFileSync(path.join(appRoot, relative)), relative);
                 if (entry.name === 'package.json') {
                     const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, relative), 'utf8'));
                     assert.equal(pkg.version, lock.packages[directory]?.version, directory);
@@ -88,7 +88,7 @@ test('desktop archive dependencies match the lockfile and installed source bytes
         }
     }
     check('node_modules');
-    const actual = asar.listPackage(archive).filter(name => name.startsWith('/node_modules/') && !asar.statFile(archive, name.slice(1)).files);
+    const actual = asar.listPackage(archive).map(name => name.split(path.sep).join('/')).filter(name => name.startsWith('/node_modules/') && !asar.statFile(archive, path.normalize(name.slice(1))).files);
     assert.deepEqual(actual.sort(), expected.sort(), 'archive must not retain removed or stale dependencies');
 });
 function renderer() {
@@ -195,17 +195,20 @@ test('invalid window sizes fall back without erasing the saved download director
 });
 test('completed exports remember their directory while cancelled downloads do not', t=>{
     const {rememberDownloads}=require(path.join(root,'desktop-settings.js'));
-    const session=new EventEmitter(),config={Downloads:{Directory:'/tmp'}};let saves=0;
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'desktop-exports-'));
+    t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const chosen=path.join(directory,'chosen');
+    const session=new EventEmitter(),config={Downloads:{Directory:directory}};let saves=0;
     rememberDownloads(session,config,()=>saves++);
     rememberDownloads(session,config,()=>saves++);
     const download=new EventEmitter();let options;
-    download.getFilename=()=> '../../save.txt';download.setSaveDialogOptions=value=>options=value;download.getSavePath=()=>'/tmp/chosen/save.txt';
+    download.getFilename=()=> '../../save.txt';download.setSaveDialogOptions=value=>options=value;download.getSavePath=()=>path.join(chosen,'save.txt');
     session.emit('will-download',{},download);
-    assert.equal(options.defaultPath,'/tmp/save.txt');
+    assert.equal(options.defaultPath,path.join(directory,'save.txt'));
     download.emit('done',{},'cancelled');assert.equal(saves,0);
     const next=new EventEmitter();Object.assign(next,{getFilename:download.getFilename,setSaveDialogOptions:download.setSaveDialogOptions,getSavePath:download.getSavePath});
     session.emit('will-download',{},next);next.emit('done',{},'completed');
-    assert.equal(config.Downloads.Directory,'/tmp/chosen');assert.equal(saves,1);
+    assert.equal(config.Downloads.Directory,chosen);assert.equal(saves,1);
 });
 test('packaged scripts bootstrap offline and never replace an opted-out local script',async t=>{
     const {dir,scripts}=cacheFixture(t),bundle=path.join(dir,'bundle');fs.mkdirSync(bundle);

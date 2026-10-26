@@ -1,28 +1,12 @@
 <!DOCTYPE html>
 <html>
-<head>
+<head><meta data-desktop-security="1" http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://bootswatch.com https://fonts.googleapis.com; img-src 'self' data: blob: https://static.wixstatic.com https://img.shields.io https://avatars.githubusercontent.com https://a.deviantart.net https://www.smogon.com; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data: blob:; connect-src 'self' https://discord.pokeclicker.com https://translations.pokeclicker.com; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; worker-src blob:">
     <title>Pokéclicker Setup</title>
     <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="utf-8"/>
     <link href="assets/images/favicon.ico" rel="icon" type="image/x-icon"/>
     <!--Bootstrap-->
     <link href="libs/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Google Analytics-->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-171657234-1"></script>
-    <script>
-        if (true) {
-            window.dataLayer = window.dataLayer || [];
-
-            function gtag() {
-                dataLayer.push(arguments);
-            }
-
-            gtag('js', new Date());
-
-            gtag('config', 'UA-171657234-1');
-        }
-    </script>
 
     <style>
     .loader {
@@ -59,7 +43,7 @@
 
 </head>
 <body class="no-select">
-<link href="https://bootswatch.com/4/yeti/bootstrap.min.css">
+
 
 <div class="loader" id="loader">
     <br>
@@ -78,7 +62,7 @@
 
 </div>
 <script>
-const setStatus = status => document.getElementById('status').innerHTML = status;
+window.setStatus = status => document.getElementById('status').textContent = status;
 </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 // @author        Axxxxpirine (Dream Orb idea: EasyGoinGaming, PR #416)
 // @description   Explicit resource grants and a bounded online Dream Orb bonus. OFF after every reload. Gains persist in your save.
 // @license       GPL-3.0 License
-// @version       1.0.0
+// @version       1.0.1
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js
@@ -244,6 +244,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
 }
 
 
-if (typeof App !== 'undefined' && (!App.isUsingClient || localStorage.getItem('optionalresources') === 'true')) {
+if (typeof App !== 'undefined' && (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('optionalresources') ?? (localStorage.getItem('optionalresources') === 'true')))) {
     loadEpheniaScript('optionalresources', () => OptionalResources.init());
 }

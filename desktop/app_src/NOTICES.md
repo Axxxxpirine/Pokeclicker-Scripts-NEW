@@ -20,6 +20,8 @@ from the repository root. The sources include the bundled dependencies and a pac
 Dependency installation uses npm ci --prefix desktop/app_src --ignore-scripts
 --omit=optional. The unused executable-updater dependency was removed and
 ZIP/WebSocket dependencies were updated in Desktop 2.2.2 on 2026-10-27.
+Desktop 3.0.0 adds renderer, download, archive and storage protections, and
+requires Electron 45.0.0 or later. The root lockfile pins the development launcher.
 
 ## Original desktop wrapper
 

@@ -5,7 +5,7 @@
 // @description   This script makes it so that Pokérus will spread from any contagious Pokémon (egg) in the Hatchery, regardless of types. It still will not spread from or to eggs with a Hatchery Helper.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       2.0.4
+// @version       2.0.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -108,6 +108,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('perkypokeruspandemic') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('perkypokeruspandemic') ?? (localStorage.getItem('perkypokeruspandemic') === 'true'))) {
     loadEpheniaScript('perkypokeruspandemic', initPokerusPandemic);
 }

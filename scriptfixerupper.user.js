@@ -2,10 +2,10 @@
 // @name          [Pokeclicker] Script Fixer Upper
 // @namespace     Pokeclicker Scripts
 // @author        Ephenia
-// @description   A script solely for clearing out localStorage without saves being affected. Meant to be a user friendly solution for this and or for users who aren't as tech literate.
+// @description   Resets known first-party script preferences while preserving saves, other app data, script enablement and update choices.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       2.2.2
+// @version       2.2.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -20,38 +20,76 @@
 // Modified by Axxxxpirine, 2026-10-27: fork maintenance and installation/update URLs.
 // Includes this fork's compatibility and feature changes where applicable.
 // Original authorship and GPL-3.0 licensing are retained.
+// Security update, 2026-10-27: reset only known preferences, preserving execution consent and unrelated storage.
 
 function initFixerUpper(resolve) {
-    function clearLocalStorage() {
+    function resetScriptSettings() {
         setTimeout(() => {
-            const keys = Object.keys(localStorage);
-            for (const key of keys) {
-                if (!key.startsWith('save') && !key.startsWith('player') && !key.startsWith('settings')) {
-                    localStorage.removeItem(key);
-                }
+            // Explicit first-party preference keys only. Never derive keys from game
+            // metadata or delete broad prefixes: the origin also stores game saves,
+            // other plugins, backups and desktop execution/update consent.
+            const preferenceKeys = [
+                'AVSautoClickerIntegration', 'AVSgraphicsDisabledSettings',
+                'battleFrontCeil', 'battleFrontAttackCeil', 'autoBattleItems', 'toggleABItems',
+                'autoNavigationSettings',
+                'autoClickState', 'autoClickMultiplier', 'autoGymState', 'autoGymSelect',
+                'autoDungeonState', 'autoDungeonFinishBeforeStopping', 'autoDungeonEncounterMode',
+                'autoDungeonChestMode', 'autoDungeonLootTier', 'autoDungeonAlwaysOpenRareChests',
+                'autoClickCalcEfficiencyDisplayMode', 'autoClickCalcDamageDisplayMode',
+                'autoHatchState', 'autoEgg', 'autoFossil', 'shinyFossil', 'pokerusModeState',
+                'filterOnly', 'priorityMonIds', 'autoHatchQueue', 'autoHatchQueueLimit',
+                'autoHatchTypeSort', 'autoHatchTargetType1', 'autoHatchTargetType2',
+                'autoMineState', 'autoSellTreasure',
+                'filterState', 'filterShowPokerus', 'filterTypes', 'catchFilter', 'filterBallPref',
+                'autoPlantState', 'autoHarvestState', 'autoReplantState', 'autoMulchState',
+                'autoCatchState', 'autoPlantSelected', 'autoFarmPlanState', 'autoFarmRichState',
+                'autoFarmMutationPlan', 'autoFarmPlanReserve', 'autoFarmRichReserve',
+                'autoFarmRichCap', 'autoFarmRichSeconds', 'autoFarmStopAt', 'autoFarmTimerMinutes',
+                'autoQuestEnabled', 'autoQuestMaxQuests', 'autoQuestIgnoredQuestTypes',
+                'autoQuestResetTimer', 'autoQuestResetState', 'autoQuestRefreshBudget', 'autoQuestMoneyReserve',
+                'autoSafariState', 'autoSafariPickItemsState', 'autoSafariThrowBaitsState',
+                'autoSafariSeekUncaught', 'autoSafariSeekContagious', 'autoSafariFastAnimationsState',
+                'ballAdjuster', 'omegaProteinCap', 'overnightGrowthMode', 'weatherChangerWeather',
+                'globalShinyState', 'globalShinyRate', 'shinySetRates', 'shinyKarmaMode',
+                'shinyKarmaRates', 'shinyDOMUpdate',
+                'Flying Pikachu', 'Mewtwo strikes back!', 'Halloween!', "Let's GO!",
+                'Merry Christmas!', 'Hoopa Day', 'Lunar New Year', 'Easter', 'Golden Week',
+                "A Pirate's Life", "Ephenia's Gift",
+            ];
+            for (const key of preferenceKeys) {
+                localStorage.removeItem(key);
             }
             if (App.isUsingClient) {
+                // The repair tool is one-shot. Leave every other script's consent intact.
                 localStorage.setItem('scriptfixerupper', false);
+                localStorage.setItem('desktopEpheniaScript:scriptfixerupper', false);
             } else {
                 localStorage.setItem('scriptfixerupper_browsernotification', true);
             }
             location.reload(); 
         }, 1000);
     }
-    const warning = "Script Fixer Upper:\n\nAttempt to fix and reset script settings? This should clear out localStorage in relation to scripts and their dependencies, but should NOT affect any of your save data. You should back up your saves before doing so, just to be safe. Press OK to proceed!\n\nNote: This process may take a few seconds to complete and the page should reload when complete.";
+    const warning = "Script Fixer Upper:\n\nReset known first-party script preferences? Saves, other app data, preference backups, script enablement and update choices are preserved. Unknown or third-party preferences are not reset. You should back up your saves before proceeding. Press OK to reset.\n\nThe page will reload when complete.";
     if (confirm(warning)) {
-        clearLocalStorage();
+        resetScriptSettings();
     } else {
         resolve();
     }
 }
 
+function isFixerUpperEnabled() {
+    try {
+        const enabled = JSON.parse(localStorage.getItem('desktopEpheniaScript:scriptfixerupper'));
+        if (typeof enabled === 'boolean') return enabled;
+    } catch (_) { /* Older clients can still use their legacy consent key. */ }
+    return localStorage.getItem('scriptfixerupper') === 'true';
+}
 
 if (localStorage.getItem('scriptfixerupper_browsernotification') === 'true') {
     // Special in-browser behavior after resets
     localStorage.removeItem('scriptfixerupper_browsernotification');
-    alert('Script Fixer Upper:\n\nAll script settings have been reset. Disable this script and reload the game.');
-} else if (!App.isUsingClient || localStorage.getItem('scriptfixerupper') === 'true') {
+    alert('Script Fixer Upper:\n\nKnown first-party script preferences have been reset. Disable this script and reload the game.');
+} else if (!App.isUsingClient || isFixerUpperEnabled()) {
     // Load fixer upper
     const fixerUpperDone = new Promise((resolve, reject) => {
         setTimeout(() => {

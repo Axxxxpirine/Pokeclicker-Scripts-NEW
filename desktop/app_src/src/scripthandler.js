@@ -7,12 +7,17 @@ class DesktopScriptHandler {
         if (typeof val === 'boolean') {
             return val;
         }
-        localStorage.setItem(name, defaultVal);
         return defaultVal;
     }
 
     static isEpheniaScriptEnabled(name) {
-        return this.getScriptEnabled(name, false);
+        const key = 'desktopEpheniaScript:' + name;
+        if (localStorage.getItem(key) === null) {
+            // Legacy keys share storage with game saves. Read booleans only,
+            // and never repair or overwrite a value in that shared namespace.
+            localStorage.setItem(key, this.getScriptEnabled(name, false));
+        }
+        return this.getScriptEnabled(key, false);
     }
 
     static isUserScriptEnabled(name) {
@@ -32,10 +37,10 @@ class DesktopScriptHandler {
             // Display scriptfixerupper separately from the normal scripts
             const settingContainer = 'settings-scripts-desktopSettings';
             const customText = 'Enable scriptfixerupper (reset script settings)';
-            this.addScriptEnabledSetting(name, settingContainer, enabled, customText, false);
+            this.addScriptEnabledSetting(name, settingContainer, enabled, customText, false, 'desktopEpheniaScript:' + name);
         } else {
             const settingContainer = 'settings-scripts-enableScriptsEphenia';
-            this.addScriptEnabledSetting(name, settingContainer, enabled);
+            this.addScriptEnabledSetting(name, settingContainer, enabled, null, true, 'desktopEpheniaScript:' + name);
         }
     }
 
@@ -52,7 +57,7 @@ class DesktopScriptHandler {
         this.addScriptEnabledSetting('desktopUserScript:' + name, settingContainer, enabled, `Enable ${name}`);
     }
 
-    static addScriptEnabledSetting(name, container, enabled, customText = null, alphabetical = true) {
+    static addScriptEnabledSetting(name, container, enabled, customText = null, alphabetical = true, storageKey = name) {
         if (document.getElementById('checkbox-' + name)) return;
         var setting = document.createElement('tr')
         const labelCell = document.createElement('td');
@@ -86,7 +91,7 @@ class DesktopScriptHandler {
 
         document.getElementById('checkbox-'+ name).checked = enabled;
         document.getElementById('checkbox-'+ name).addEventListener('change', event => {
-            localStorage.setItem(name, event.target.checked);
+            localStorage.setItem(storageKey, event.target.checked);
         });
     }
 

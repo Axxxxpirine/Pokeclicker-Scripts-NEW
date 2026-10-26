@@ -5,7 +5,7 @@
 // @description   Removes the limit for the amount of Oak Items that you're able to equip so that you're able to equip all of them.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.0.4
+// @version       1.0.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -97,6 +97,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('oakitemsunlimited') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('oakitemsunlimited') ?? (localStorage.getItem('oakitemsunlimited') === 'true'))) {
     loadEpheniaScript('oakitemsunlimited', initOakItems);
 }

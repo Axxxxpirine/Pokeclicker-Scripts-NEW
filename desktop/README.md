@@ -1,6 +1,6 @@
 # Pokéclicker Scripts Desktop
 
-A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.1** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
+A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.2** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
 
 ## Install or update
 
@@ -59,3 +59,20 @@ Automated tests cover malformed settings, offline fallback, failed updates, disa
 The userscripts retain their original credits and GPL-3.0 notices. The build includes the repository's full `LICENSE` as `LICENSE-GPL-3.0.txt` in `app.asar`, alongside [component notices](app_src/NOTICES.md). The upstream desktop package declares ISC and credits RedSparr0w. Dependencies retain their individual license files.
 
 Fork modifications and packaging were updated on 2026-10-27 by Axxxxpirine. Editable desktop sources are in [app_src](app_src), userscripts are in the repository root and `custom`, and [the build script](../scripts/build-desktop.cjs) reproduces the archive. Use sources from the same repository revision as the archive.
+
+## Dependency maintenance
+
+Desktop 2.2.2 pins its production dependency tree in [package-lock.json](app_src/package-lock.json). It includes adm-zip 0.6.1 and ws 7.5.13 and removes the unused electron-updater dependency tree. The audited shipped npm packages reported no known vulnerabilities on 2026-10-27. The Electron executable is supplied by the official client and is outside this package audit.
+
+To refresh the bundled files from the lockfile, run these commands from the repository root:
+
+```sh
+npm run deps:desktop
+npm audit --prefix desktop/app_src --omit=optional
+npm run build:desktop
+npm test
+```
+
+The install omits optional native fallbacks and skips package lifecycle scripts. Discord protocol registration uses Electron's built-in API. Generated command launchers and npm's hidden install cache are excluded from the archive. Keep the installed dependency files, lockfile and rebuilt archive together in a change. Packaging tests check every bundled dependency file against its source and reject leftover dependencies.
+
+The 2.2.2 archive also passed a hidden Electron 21.3.1/macOS smoke test with Node 16.16.0: ZIP extraction, offline startup, two document loads, all 26 bundled scripts discovered, and native Discord protocol registration. The test used an isolated minimal game fixture, blocked networking and suppressed Discord login. It did not change a user save or validate Windows/Linux or live Discord connectivity.

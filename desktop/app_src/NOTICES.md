@@ -16,7 +16,10 @@ Editable sources, modifications and the packaging script are available at
 https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW . Use the same repository
 revision as the downloaded archive. Sources are in desktop/app_src, the
 repository root and custom. Build with npm ci and npm run build:desktop
-from the repository root. The sources include the bundled dependencies.
+from the repository root. The sources include the bundled dependencies and a package-lock.json file.
+Dependency installation uses npm ci --prefix desktop/app_src --ignore-scripts
+--omit=optional. The unused executable-updater dependency was removed and
+ZIP/WebSocket dependencies were updated in Desktop 2.2.2 on 2026-10-27.
 
 ## Original desktop wrapper
 

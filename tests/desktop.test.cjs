@@ -5,6 +5,46 @@ const os = require('node:os');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../desktop/app_src/src');
+test('desktop WebSocket receiver rejects excessive message fragments', async () => {
+    const {Receiver} = require('../desktop/app_src/node_modules/ws');
+    const receiver = new Receiver('nodebuffer', {}, false, 1024, 0, 2);
+    const failure = new Promise(resolve => receiver.once('error', resolve));
+    receiver.write(Buffer.from([0x01, 0x01, 0x61, 0x00, 0x01, 0x62, 0x80, 0x01, 0x63]));
+    const error = await Promise.race([failure, new Promise(resolve => setImmediate(() => resolve(null)))]);
+    receiver.destroy();
+    assert.ok(error, 'fragment limit must reject the third fragment');
+    assert.equal(error.code, 'WS_ERR_TOO_MANY_BUFFERED_PARTS');
+});
+test('game ZIP extraction refuses destination symlinks without overwriting outside files', t => {
+    const Zip = require('../desktop/app_src/node_modules/adm-zip');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokeclicker-zip-'));
+    t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+    const target = path.join(dir, 'data');
+    const outside = path.join(dir, 'outside');
+    fs.mkdirSync(path.join(target, 'pokeclicker-master'), {recursive:true});
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, 'index.html'), 'keep');
+    fs.symlinkSync(outside, path.join(target, 'pokeclicker-master/docs'), 'junction');
+    const zip = new Zip();
+    zip.addFile('pokeclicker-master/docs/', Buffer.alloc(0));
+    zip.addFile('pokeclicker-master/docs/index.html', Buffer.from('overwrite'));
+    const downloaded = new Zip(zip.toBuffer());
+    assert.throws(() => downloaded.extractEntryTo('pokeclicker-master/docs/', target, true, true));
+    assert.equal(fs.readFileSync(path.join(outside, 'index.html'), 'utf8'), 'keep');
+});
+test('game ZIP extraction retains nested paths and contents for a normal update', t => {
+    const Zip = require('../desktop/app_src/node_modules/adm-zip');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pokeclicker-zip-'));
+    t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+    const zip = new Zip();
+    zip.addFile('pokeclicker-master/docs/', Buffer.alloc(0));
+    zip.addFile('pokeclicker-master/docs/index.html', Buffer.from('<title>Pokéclicker</title>'));
+    zip.addFile('pokeclicker-master/docs/assets/test.txt', Buffer.from('game asset'));
+    const downloaded = new Zip(zip.toBuffer());
+    assert.equal(downloaded.extractEntryTo('pokeclicker-master/docs/', dir, true, true), true);
+    assert.equal(fs.readFileSync(path.join(dir, 'pokeclicker-master/docs/index.html'), 'utf8'), '<title>Pokéclicker</title>');
+    assert.equal(fs.readFileSync(path.join(dir, 'pokeclicker-master/docs/assets/test.txt'), 'utf8'), 'game asset');
+});
 test('published desktop archive includes license notices and current userscript sources', () => {
     const asar = require('@electron/asar');
     const repo = path.resolve(__dirname, '..');
@@ -21,6 +61,34 @@ test('published desktop archive includes license notices and current userscript 
     for (const name of fs.readdirSync(root).filter(name => name.endsWith('.js'))) {
         assert.equal(read(`src/${name}`), fs.readFileSync(path.join(root, name), 'utf8'), name);
     }
+});
+test('desktop archive dependencies match the lockfile and installed source bytes', () => {
+    const asar = require('@electron/asar');
+    const appRoot = path.resolve(root, '..');
+    const archive = path.resolve(appRoot, '../app.asar');
+    const lock = JSON.parse(fs.readFileSync(path.join(appRoot, 'package-lock.json'), 'utf8'));
+    for (const name of ['package.json', 'package-lock.json']) {
+        assert.deepEqual(asar.extractFile(archive, name), fs.readFileSync(path.join(appRoot, name)));
+    }
+    const expected = [];
+    function check(directory) {
+        for (const entry of fs.readdirSync(path.join(appRoot, directory), {withFileTypes:true})) {
+            if (entry.name === '.bin' || entry.name === '.package-lock.json') continue;
+            const relative = `${directory}/${entry.name}`;
+            if (entry.isDirectory()) check(relative);
+            else {
+                expected.push(`/${relative}`);
+                assert.deepEqual(asar.extractFile(archive, relative), fs.readFileSync(path.join(appRoot, relative)), relative);
+                if (entry.name === 'package.json') {
+                    const pkg = JSON.parse(fs.readFileSync(path.join(appRoot, relative), 'utf8'));
+                    assert.equal(pkg.version, lock.packages[directory]?.version, directory);
+                }
+            }
+        }
+    }
+    check('node_modules');
+    const actual = asar.listPackage(archive).filter(name => name.startsWith('/node_modules/') && !asar.statFile(archive, name.slice(1)).files);
+    assert.deepEqual(actual.sort(), expected.sort(), 'archive must not retain removed or stale dependencies');
 });
 function renderer() {
     const dom = new JSDOM('<div id="settingsModal"><div><ul class="nav-tabs"></ul><div class="tab-content"></div></div></div>', {url:'https://example.test',runScripts:'outside-only'});

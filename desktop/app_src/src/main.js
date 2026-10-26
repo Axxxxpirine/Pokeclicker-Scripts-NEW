@@ -20,7 +20,7 @@ const ini = require("ini");
 const {attachScriptsWindow, atomicWrite} = require('./desktop-scripts');
 const {normalizeSettings, rememberDownloads} = require('./desktop-settings');
 const settingsFile = path.join(dataDir, "settings.ini");
-const POKECLICKER_SCRIPTS_DESKTOP_VERSION = '2.2.1';
+const POKECLICKER_SCRIPTS_DESKTOP_VERSION = '2.2.2';
 
 console.info("Data directory:", dataDir);
 

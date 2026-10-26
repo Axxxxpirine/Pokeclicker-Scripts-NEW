@@ -35,7 +35,7 @@ For updates, use your userscript manager's update check or reopen the same Insta
 
 ### Desktop client
 
-Use the modified **Scripts Desktop 2.2.1** loader with an existing [Pokéclicker Desktop client](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
+Use the modified **Scripts Desktop 2.2.2** loader with an existing [Pokéclicker Desktop client](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
 
 1. Export your save, keep a copy of the original client `app.asar`, and close the client.
 2. Download this fork's [app.asar](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/desktop/app.asar) and replace the client's `resources/app.asar`. On macOS, the resources directory is inside the application bundle.
@@ -248,9 +248,11 @@ Open an [issue in this fork](https://github.com/Axxxxpirine/Pokeclicker-Scripts-
 
 This fork targets **Pokéclicker 0.10.26**. Previously exercised environments are **Zen 1.23.4b with Tampermonkey 5.5.0** and **Electron 21.3.1 on macOS**. Windows, Linux, other userscript managers, other game versions and every combination of scripts have not been validated.
 
-The current source suite contains **252 automated tests**, including **22 Safari tests**. Coverage includes Safari pathfinding and capture priorities, mining, farming, hatchery filters and queues, navigation limits, quest budgets, custom overrides, desktop script loading/updating, and archive contents matching the source files and license notices. Passing these tests is not a guarantee of hours of background operation or every game region.
+The current source suite contains **256 automated tests**, including **22 Safari tests**. Coverage includes Safari pathfinding and capture priorities, mining, farming, hatchery filters and queues, navigation limits, quest budgets, custom overrides, desktop script loading/updating, and archive contents matching the source files and license notices. Passing these tests is not a guarantee of hours of background operation or every game region.
 
 Safari movement, bait, captures, item collection and stopping were also checked in a live Kanto session with version 1.2.5. The new visible-uncaught pursuit in **Auto Safari 1.3.0** is covered by automated tests and code review. Installing that update alone does not establish that the new pursuit has been exercised in a live session.
+
+Desktop 2.2.2 updates ZIP and WebSocket dependencies and removes the unused executable updater and its dependencies. On 2026-10-27, the shipped npm dependency audit reported no known vulnerabilities. This audit does not cover the separately installed Electron executable or certify the whole application as secure. Use a maintained official client runtime and validate compatibility before sharing a custom executable.
 
 ## Development
 
@@ -266,6 +268,8 @@ To package the desktop loader with the scripts and license notices from your cur
 ```sh
 npm run build:desktop
 ```
+
+Desktop dependencies are pinned in `desktop/app_src/package-lock.json` and bundled for offline installation. To reinstall them from the lockfile, run `npm run deps:desktop`, then rebuild and test. This excludes optional native fallbacks and package lifecycle scripts. Discord uses Electron's native protocol registration. Check the shipped npm dependencies with `npm audit --prefix desktop/app_src --omit=optional`.
 
 This rebuilds `desktop/app.asar` from `desktop/app_src`, the root/custom userscripts and `LICENSE`. Rebuild after changing bundled scripts, desktop sources or notices. The packaging test rejects an archive that no longer matches these files. The [desktop guide](desktop/README.md) describes the loader and update behavior.
 

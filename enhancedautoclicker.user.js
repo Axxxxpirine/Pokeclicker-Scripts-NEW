@@ -5,12 +5,12 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.5.4
+// @version       3.6.0
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/enhancedautoclicker.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/enhancedautoclicker.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
@@ -19,6 +19,8 @@
 // ==/UserScript==
 
 class EnhancedAutoClicker {
+    static navigationVersion = 1;
+    static navigationOwner = null;
     // Constants
     static ticksPerSecond = 20;
     static maxClickMultiplier = 5;
@@ -225,6 +227,13 @@ class EnhancedAutoClicker {
     /* Settings event handlers */
 
     static toggleAutoClick() {
+        if (this.navigationOwner?.active) {
+            if (!this.navigationOwner.internal) {
+                const wanted = !this.autoClickState();
+                this.navigationOwner.stop('Manual clicker control', false);
+                if (this.autoClickState() === wanted) return;
+            }
+        }
         const element = document.getElementById('auto-click-start');
         this.autoClickState(!this.autoClickState());
         localStorage.setItem('autoClickState', this.autoClickState());
@@ -254,6 +263,9 @@ class EnhancedAutoClicker {
     }
 
     static toggleAutoGym() {
+        if (this.navigationOwner?.active) {
+            if (!this.navigationOwner.internal) this.navigationOwner.stop('Manual clicker control', false);
+        }
         const element = document.getElementById('auto-gym-start');
         const newState = !this.autoGymState();
         if (newState && !this.canStartAutoGym()) {
@@ -292,6 +304,10 @@ class EnhancedAutoClicker {
     }
 
     static toggleAutoDungeon(allowSlowStop = false) {
+        if (this.navigationOwner?.active) {
+            if (!this.navigationOwner.internal) this.navigationOwner.stop('Manual clicker control', false);
+            else { this.navigationOwner.stop('Dungeon traversal stopped', true); return; }
+        }
         const element = document.getElementById('auto-dungeon-start');
         let newState = !this.autoDungeonState();
 
@@ -420,6 +436,8 @@ class EnhancedAutoClicker {
      * -Outside of battle, runs Auto Dungeon and Auto Gym
      */
     static autoClicker() {
+        if (this.navigationOwner?.active) this.navigationOwner.tick();
+        if (!this.autoClickState()) return;
         // Click while in a normal battle
         if (App.game.gameState === GameConstants.GameState.fighting) {
             Battle.clickAttack(this.autoClickMultiplier);
@@ -435,6 +453,10 @@ class EnhancedAutoClicker {
         // ...or temporary battle
         else if (App.game.gameState === GameConstants.GameState.temporaryBattle) {
             TemporaryBattleBattle.clickAttack(this.autoClickMultiplier);
+        }
+        // A managed session uses the native completion and pays for each entry itself.
+        else if (this.navigationOwner?.active && App.game.gameState === GameConstants.GameState.dungeon) {
+            this.navigationOwner.explore();
         }
         // If not battling, progress through dungeon
         else if (this.autoDungeonState()) {
@@ -1236,9 +1258,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
 }
 
 if (!App.isUsingClient || localStorage.getItem('enhancedautoclicker') === 'true') {
-    if (!App.isUsingClient) {
-        // Necessary for userscript managers
-        unsafeWindow.EnhancedAutoClicker = EnhancedAutoClicker;
-    }
+    (!App.isUsingClient ? unsafeWindow : window).EnhancedAutoClicker = EnhancedAutoClicker;
     loadEpheniaScript('enhancedautoclicker', () => EnhancedAutoClicker.initAutoClicker(), () => EnhancedAutoClicker.initOverrides());
 }

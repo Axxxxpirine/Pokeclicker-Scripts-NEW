@@ -1,3 +1,29 @@
+# Pokéclicker Scripts — NEW
+
+Independent GPL-3.0 fork of [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts). Original authors, credits and license are preserved.
+
+## L1 compatibility update — 26 October 2026
+
+Targets Pokéclicker **0.10.26**. The five updated scripts use this fork for future updates. Other scripts and the original documentation below have not been requalified.
+
+| Script | Version | Changes |
+| --- | --- | --- |
+| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Current mine API, one action per second, Chisel/Hammer, native Auto Restart, optional sale respects locked items |
+| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.1.5 | Visible controls, bounded hatch loop, obsolete fossil incubation disabled |
+| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.7.4 | Replant reads current plot berry data |
+| [Auto Safari Zone](custom/autosafarizone.user.js) | 1.2.5 | Current berry inventory, restart after unreachable paths, isolated encounter tiles |
+| [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Pirate artwork, no false warning caused by the number of events |
+
+The game's underground refactor removed energy restores and the old survey/skip mechanics. Auto Mine now waits for tool durability to recover and follows the game's **Auto Restart** setting. It avoids bombs because they can destroy treasures. Fossils must now be revived through the game's town traders, so Auto Fossil and Shiny Fossils are disabled with an explanation. Existing preferences are retained.
+
+Run regression tests with `npm ci` then `npm test` (Node.js 18 or later). Tests cover initialization, start/stop, tool availability, protected sales, bounded hatch processing, replanting, Safari paths and berry reserves, and event toggling.
+
+Browser checks use a separate local copy of the real game and a restored test save. They do not update the installed Zen/Tampermonkey scripts. To try a branch, open the selected script's **Raw** view and replace its existing Tampermonkey entry. Download/update URLs point to this fork's `master` branch for releases after merging.
+
+## Original project documentation
+
+The following section is retained from upstream. Its installation links and older feature descriptions refer to the original project.
+
 # **Pokéclicker Scripts**
 [![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FEphenia%2FPokeclicker-Scripts&count_bg=%23CE4993&title_bg=%23555555&icon=pokemon.svg&icon_color=%23FFD700&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
 [![GitHub stars](https://img.shields.io/github/stars/Ephenia/Pokeclicker-Scripts?logo=apache%20spark&logoColor=gold)](https://github.com/Ephenia/Pokeclicker-Scripts/stargazers)

@@ -5,24 +5,25 @@
 // @description   Adds in toggable options to have seasonal events infinitely run. Events can also run simultaneously with one another. Includes a custom event as well.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.3.3
+// @version       1.3.4
 
-// @homepageURL   https://github.com/Ephenia/Pokeclicker-Scripts/
-// @supportURL    https://github.com/Ephenia/Pokeclicker-Scripts/issues
-// @downloadURL   https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/infiniteseasonalevents.user.js
-// @updateURL     https://raw.githubusercontent.com/Ephenia/Pokeclicker-Scripts/master/custom/infiniteseasonalevents.user.js
+// @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
+// @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
+// @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/infiniteseasonalevents.user.js
+// @updateURL     https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/infiniteseasonalevents.user.js
 
 // @match         https://www.pokeclicker.com/
 // @icon          https://www.google.com/s2/favicons?domain=pokeclicker.com
 // @grant         unsafeWindow
 // @run-at        document-idle
 // ==/UserScript==
+// Fork compatibility update, 2026-10-26: fixes for Pokéclicker 0.10.26.
+
 
 var activeSeasonalEvents = {};
 
 //Removed setTimeout, opted to make it load like the other scrips, also helps with notifications
 function initEvents() {
-    const NUM_EVENTS = 10;
     const startDate = new Date(new Date().getFullYear(), -1);
     const endDate = new Date(new Date().getFullYear(), 10000);
 
@@ -56,15 +57,6 @@ function initEvents() {
         if (!event.hasStarted() && activeSeasonalEvents[event.title]) {
             event.start();
         }
-    }
-
-    if (App.game.specialEvents.events.length != NUM_EVENTS) {
-        Notifier.notify({
-            title: '[Outdated] Infinite Seasonal Events',
-            message: `Please contact <a href="https://github.com/Ephenia/Pokeclicker-Scripts" target="_blank">Ephenia</a> so that this script can be updated!`,
-            type: NotificationConstants.NotificationOption.danger,
-            timeout: 1000000
-        });
     }
 
     var eventLi = document.createElement('li');
@@ -192,6 +184,13 @@ function initEvents() {
                 <img src="assets/images/pokemon/1.03.png">
                 </div><hr>`
                 break
+            case "A Pirate's Life":
+                modalBody.innerHTML +=
+                    `<div id="event-${title}" class="event-select" data-value="${title}"><b>${title}</b><br>${description}<br>
+                    ${pokemonList.filter(p => p.name.includes('(Pirate)') || p.name.includes('Captain'))
+                        .map(p => `<img src="assets/images/pokemon/${p.id}.png" alt="${p.name}" title="${p.name}">`).join('')}
+                    </div><hr>`;
+                break;
             case "Ephenia's Gift":
                 modalBody.innerHTML +=
                     `<div id="event-${title}" class="event-select" data-value="${title}"><b>${title}</b><br>${description}<br>

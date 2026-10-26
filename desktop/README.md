@@ -1,30 +1,55 @@
 # Pokéclicker Scripts Desktop
 
-A version of the PokéClicker desktop client modified to manage and run userscripts.
+A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.0** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
 
-## Features:
-- Automatically downloads new scripts and script versions from this project
-- Runs offline after initial script downloads
-- Enable and disable individual scripts
-- Supports adding your own userscripts
+## Install or update
 
-## Instructions:
+1. Export your save from the game's Save menu and keep the original client `app.asar`. Keep the application data folder as well. Replacing the archive does not require deleting or resetting this folder.
+2. Close the desktop client, locate its `resources` folder (inside the application bundle on macOS), and replace `app.asar` with the file from this folder and branch.
+3. Start the client and open Settings → Scripts. Repository scripts start disabled unless you already selected them. Enable the scripts you want, then restart or reload the window.
 
-1. Download the latest version of the Pokéclicker desktop client from [https://github.com/RedSparr0w/Pokeclicker-desktop/releases/](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/) and make sure the game runs properly. 
-2. Download the `app.asar` file from this folder
-3. Where you installed the PokéClicker app, locate its `resources` folder. This step will depend on your operating system: `resources` may be in the same folder as the app, or inside the app's package contents itself.
-4. There should be an `app.asar` file already inside the `resources` folder. Replace it with the modified `app.asar` downloaded here.
-5. Open the PokéClicker app again. It should automatically download the scripts from this GitHub repository.
-6. Load a save and open the game's settings.
-7. In the settings menu, there should be a tab to the far right called "Scripts" that lists all of the installed scripts. (Some settings from enabled scripts will appear here as well.) Newly-downloaded scripts start out disabled; enable any that you want to use.
-8. Restart the app and enjoy using the scripts!
+This archive contains the modified client JavaScript, not the Electron executable. Its base package version is 1.2.0. L6 was exercised on macOS with **Electron 21.3.1 and game 0.10.26**, using an isolated profile and copied save. Other Electron/client versions and Windows/Linux require their own validation. Obtain the official client separately from [Pokéclicker Desktop releases](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
 
-<img width="840" alt="Script manager options" src="https://github.com/Ephenia/Pokeclicker-Scripts/assets/12092270/dc19411e-c565-48cb-8be6-6ac9b8abe17b">
+## Versions and updates
 
-Optionally, you can add custom scripts from outside this project. This mod creates two new folders in the app's application data directory, `scripts` and `custom-scripts`. JavaScript (`.js`) files placed in the `custom-scripts` folder will run when the app is launched, and like other scripts can be disabled/enabled in the settings. The application data location depends on operating system:
+Settings → Scripts shows the game version, Scripts Desktop version, Electron runtime and modified package version separately. The installed official client version is reported as **unknown** because replacing `app.asar` also replaces its `package.json`. The modified package version must not be used to identify the original client.
+
+Automatic executable updates are disabled in the modified client because their version comparison would use the replaced package metadata. Check official client releases manually. Script updates remain available, and a newer Scripts Desktop version is reported in the Scripts panel using the repository's update-check metadata. Game data updates retain the original client's updater.
+
+The script updater validates downloaded JavaScript, replaces complete files atomically and retains the cached copy after network or write failures. An older numbered script version cannot replace a newer installed version. Files absent from a remote listing are retained, rather than renamed or deleted.
+
+Turn off **Script auto-updates enabled** to preserve local edits. A missing checksum does not override that choice. New scripts can still be installed, disabled by default. **Update scripts on next game launch** requests one update pass and is only cleared after a successful pass. Failed/offline checks preserve the request. A request made while an earlier check is running remains queued for the next launch.
+
+## Offline use and paths
+
+The game must have been downloaded at least once. After that, the cached game and scripts work offline. The archive bundles 26 repository scripts, so missing script files can also be initialized without a network connection. Bundled newer versions update existing files only when script updates are enabled. Existing selections remain unchanged.
+
+The application data location normally is:
 
 - Windows: `%appdata%/pokeclicker-desktop` or `%localappdata%/pokeclicker-desktop`
 - macOS: `~/Library/Application Support/pokeclicker-desktop`
-- Linux: either `$XDG_CONFIG_HOME/pokeclicker-desktop` or `~/.config/pokeclicker-desktop`
+- Linux: `$XDG_CONFIG_HOME/pokeclicker-desktop` or `~/.config/pokeclicker-desktop`
 
-You can now also disable automatic downloading of new script versions. This is only recommended for advanced users who want to modify scripts or update to in-development script versions before their official release. In this mode, the client will notify you when updates to scripts are available. You can either automatically download all updates via an option in the settings menu, or manually install individual updates. For manual installation, download the desired script file from this repository, save it in the `scripts` folder, and launch the game once before making any modifications to the script.
+The exact directory is printed in the main-process log. It contains `scripts`, `custom-scripts`, `settings.ini` and the client's game/save storage. Game paths use native file loading, including spaces, accents and `#` characters. Successful save exports remember their destination directory in `settings.ini` for the next session. Cancelled exports do not replace it. A directory that no longer exists falls back to the native save dialog's default.
+
+## User-added scripts and multiple windows
+
+Put additional `.js` files in `custom-scripts`. They default to enabled. Their existing first-dot toggle keys are migrated to separate `desktopUserScript:<filename>` keys on first use, preserving explicit disabled states. Each custom file then has its own toggle, even if its name overlaps a downloaded script. Each script runs in a separate function scope so top-level `const` declarations cannot collide.
+
+Each window loads the scripts once per document. A failing script does not stop the following scripts or prevent the game from starting. A reload invalidates pending injection into the old document. Shared cache updates are serialized across windows. The client's native save-slot behavior is unchanged: use different saves in concurrent windows to avoid competing game saves.
+
+An initialization error inside a userscript can still be reported by that script after the loader finishes. The loader does not fix the known Catch Filter, Karma or Debug Cheats compatibility defects recorded in L2. Disabling a script and reloading is preferable to deleting application data or running Script Fixer Upper indiscriminately.
+
+## Build and checks
+
+From the repository root:
+
+```sh
+npm ci
+npm test
+npm run build:desktop
+```
+
+The build copies `desktop/app_src` into `.local/desktop-build`, adds the current root/custom userscripts and packages `desktop/app.asar` with the pinned `@electron/asar` dependency. Do not edit the generated archive directly. The checked-in archive must be rebuilt after changing desktop sources or bundled scripts.
+
+Automated tests cover malformed settings, offline fallback, failed updates, disabled updates, downgrades, script isolation, stale navigation, update-request timing, custom-toggle migration and remembered exports. The L6 Electron smoke test additionally exercised the packaged archive, a copied 0.10.26 save, reload, a secondary window, an accented data path and a native export. It does not certify every script or every region of the game.

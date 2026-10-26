@@ -5,6 +5,23 @@ const os = require('node:os');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '../desktop/app_src/src');
+test('published desktop archive includes license notices and current userscript sources', () => {
+    const asar = require('@electron/asar');
+    const repo = path.resolve(__dirname, '..');
+    const archive = path.join(repo, 'desktop/app.asar');
+    const read = name => asar.extractFile(archive, name).toString('utf8');
+    assert.equal(read('LICENSE-GPL-3.0.txt'), fs.readFileSync(path.join(repo, 'LICENSE'), 'utf8'));
+    assert.equal(read('NOTICES.md'), fs.readFileSync(path.join(repo, 'desktop/app_src/NOTICES.md'), 'utf8'));
+    for (const directory of [repo, path.join(repo, 'custom')]) {
+        for (const name of fs.readdirSync(directory).filter(name => name.endsWith('.user.js'))) {
+            assert.equal(read(`bundled-scripts/${name}`), fs.readFileSync(path.join(directory, name), 'utf8'), name);
+        }
+    }
+    assert.equal(read('src/desktopupdatechecker.js'), fs.readFileSync(path.join(repo, 'desktopupdatechecker.js'), 'utf8'));
+    for (const name of fs.readdirSync(root).filter(name => name.endsWith('.js'))) {
+        assert.equal(read(`src/${name}`), fs.readFileSync(path.join(root, name), 'utf8'), name);
+    }
+});
 function renderer() {
     const dom = new JSDOM('<div id="settingsModal"><div><ul class="nav-tabs"></ul><div class="tab-content"></div></div></div>', {url:'https://example.test',runScripts:'outside-only'});
     dom.window.eval(fs.readFileSync(path.join(root,'scripthandler.js'),'utf8')+'\nwindow.Handler = DesktopScriptHandler;');

@@ -1,554 +1,282 @@
 # Pokéclicker Scripts — NEW
 
-Independent GPL-3.0 fork of [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts). Original authors, credits and license are preserved.
+Automation, interface improvements and optional gameplay changes for [Pokéclicker](https://www.pokeclicker.com/), maintained in [Axxxxpirine/Pokeclicker-Scripts-NEW](https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW).
 
-## Finalization — 26 October 2026
+This is an independent fork of [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts), originally developed by Ephenia and contributors. It is not an official Pokéclicker project.
 
-Validated on game 0.10.26 with 237 automated tests, Electron 21.3.1 on macOS, and Zen 1.23.4b with Tampermonkey 5.5.0. Native Alola captures, Friend Safari movement/encounters and a synthetic 1,636-Pokémon collection were exercised on isolated data. Zen completed a League cycle including background time and preserved the frozen save and ball settings exactly through reload. Full process restart/offline/export checks were performed in Electron. This does not certify hours of background operation, Windows/Linux, or a full restart of the user’s live Zen session.
+**Target game version: 0.10.26.** Install only the scripts you want. Some automate normal play, while others change odds, limits, resources or progression. Export your save before installing scripts or trying gameplay overrides.
 
-- **Catch Filter 1.9.4:** independent ball preferences after reset and migration, safe malformed-settings recovery, optional Pokérus column.
-- **Synthetic Shiny Synapse 1.5.3:** native source attribution replaces stack parsing, valid probabilities and native shiny bonuses. Unknown sources keep native odds.
-- **Debug Cheats 1.1.0:** current inventories, exact finite quantities, explicit invalid-currency repair, region filters that follow progression, and closure-safe buttons on Desktop. These are manual cheats and can permanently change progression.
-- **Auto Farmer 1.9.0:** a manual 5×5 planting plan with reserves. Leaves occupied, locked and unselected plots untouched, never uproots, and excludes harvesting/replanting automation while active. Rich Mulch uses a reserve and per-activation budget just before maturity. Both modes start OFF after reload. Farmhands remain independent.
-- **Auto Hatchery 3.3.0:** optional native queue, target 1–100 bounded by unlocked capacity, preserving existing queue order and excluding duplicates. Automatic queue filling pauses with PKRS Mode or Auto Egg. Optional type efficiency combines native breeding efficiency, regional multiplier and attack type modifier for the selected target types. Existing priorities and filters still apply.
-- **Auto Navigation 1.1.0:** complete the currently tracked native route/gym/dungeon achievement, run a bounded number of cycles through the current League, or collect the available normal/shiny encounters in the current route or dungeon. Existing capture filters, budgets, time limits, manual cancellation and return behavior apply. Search limits do not guarantee a shiny. Route limits may overshoot slightly between checks.
+## Contents
 
-New automation requires an explicit start. Export your save before using cheat controls. The Debug Cheats, Shiny Modifier and Optional Resources menus remain separate, with no automatic resource grants on installation.
+- [Installation and updates](#installation-and-updates)
+- [Script catalog](#script-catalog)
+- [Feature guide](#feature-guide)
+- [Settings and stopping automation](#settings-and-stopping-automation)
+- [Troubleshooting](#troubleshooting)
+- [Compatibility and validation](#compatibility-and-validation)
+- [Development](#development)
+- [Credits and licenses](#credits-and-licenses)
 
-## L1 compatibility and L3 options — 26 October 2026
+## Installation and updates
 
-Targets Pokéclicker **0.10.26**. All userscript update URLs point to this fork. Compatibility checks target the scenarios described below, not every historic issue in the upstream tracker.
+### Browser
 
-| Script | Version | Changes |
-| --- | --- | --- |
-| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Current mine API, one action per second, Chisel/Hammer, native Auto Restart, optional sale respects locked items |
-| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.0 | Native queue and type efficiency, strict filters, validated priority IDs with fair rotation, bounded hatch loop |
-| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.0 | Per-plot planting plan and bounded pre-ripe Rich Mulch, wanderer capture and persistent stop timer, current replant API |
-| [Auto Safari Zone](custom/autosafarizone.user.js) | 1.2.5 | Current berry inventory, restart after unreachable paths, isolated encounter tiles |
-| [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Pirate artwork, no false warning caused by the number of events |
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser. Zen with Tampermonkey is the browser setup tested for this fork. Other userscript managers, such as [Violentmonkey](https://violentmonkey.github.io/), have not been validated here.
+2. Choose a script from the catalog below and open its **Install** link. All script installation links point to this fork.
+3. Check the script name and version in your userscript manager, then install it. When replacing an upstream copy, keep only one enabled copy of that script.
+4. Reload [Pokéclicker](https://www.pokeclicker.com/) after installation or an update. Controls appear beside the relevant game feature, under **Settings → Scripts**, or in the **Start Menu**, depending on the script.
+5. Review the controls and enable the modes you want. Some older scripts restore their previous ON/OFF state, so check the buttons after reloading.
 
-The game's underground refactor removed energy restores and the old survey/skip mechanics. Auto Mine now waits for tool durability to recover and follows the game's **Auto Restart** setting. It avoids bombs because they can destroy treasures. Fossils must now be revived through the game's town traders, so Auto Fossil and Shiny Fossils are disabled with an explanation. Existing preferences are retained. L3 adds independent wanderer capture, a persistent farm stop timer, strict hatchery filters and validated priority IDs with rotation.
+**Auto Navigation requires this fork's Enhanced Auto Clicker.** Install both if you want its travel and objective controls.
 
-Run regression tests with `npm ci` then `npm test` (Node.js 18 or later). Tests cover initialization, start/stop, tool availability, protected sales, bounded hatch processing, replanting, Safari paths and berry reserves, event toggling, timer expiry/reload/cancellation, strict filters and fair priority scheduling.
+For updates, use your userscript manager's update check or reopen the same Install link. The scripts' download and update URLs point to this repository's `master` branch. Updating a file does not replace the code already running in an open game tab: reload the game to use it.
 
-Browser checks use a separate local copy of the real game and a restored test save. They do not update the installed Zen/Tampermonkey scripts. To try a branch, open the selected script's **Raw** view and replace its existing Tampermonkey entry. Download/update URLs point to this fork's `master` branch for releases after merging.
+**Branch versions:** the catalog describes the files in the checkout you are reading. Install links always serve published `master` files, which can be older than an unmerged feature branch. To test a branch, open the linked source file on that branch and use its **Raw** view, or replace the existing entry with the local file's contents. Check the version before installing. Automatic updates still follow `master` unless you change that setting in your manager.
 
-## Original project documentation
+### Desktop client
 
-The following section is retained from upstream. Its installation links and older feature descriptions refer to the original project.
+Use the modified **Scripts Desktop 2.2.1** loader with an existing [Pokéclicker Desktop client](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
 
-# **Pokéclicker Scripts**
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FEphenia%2FPokeclicker-Scripts&count_bg=%23CE4993&title_bg=%23555555&icon=pokemon.svg&icon_color=%23FFD700&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
-[![GitHub stars](https://img.shields.io/github/stars/Ephenia/Pokeclicker-Scripts?logo=apache%20spark&logoColor=gold)](https://github.com/Ephenia/Pokeclicker-Scripts/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/Ephenia/Pokeclicker-Scripts?color=%23AA4A44)](https://github.com/Ephenia/Pokeclicker-Scripts/issues)
-[![GitHub forks](https://img.shields.io/github/forks/Ephenia/Pokeclicker-Scripts?color=40826d)](https://github.com/Ephenia/Pokeclicker-Scripts/network)
+1. Export your save, keep a copy of the original client `app.asar`, and close the client.
+2. Download this fork's [app.asar](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/desktop/app.asar) and replace the client's `resources/app.asar`. On macOS, the resources directory is inside the application bundle.
+3. Start the client, open **Settings → Scripts**, select the scripts you want, then reload or restart. Repository scripts start disabled unless you previously selected them.
 
-**UPDATE: April 18th, 2023**
+See the [desktop installation and update guide](desktop/README.md) for platform paths, offline use and custom scripts. Do not delete the client data folder to install or update the loader.
 
-[PLEASE READ](https://github.com/Ephenia/Pokeclicker-Scripts/issues/298)
+The loader checks this fork for script updates and can use cached scripts offline after the game has been downloaded. Turn off **Script auto-updates enabled** to preserve local edits. Official executable updates must be checked manually, while game-data and script updates remain separate.
 
-It's very important for the future of the project in general and how things will be like going forward.
+The archive is a built artifact. If you are testing changes to scripts or desktop sources in a checkout, [rebuild it](#development) to include those changes. Replacing the archive does not establish which version of the original official client you had installed.
 
-**Troubleshooting (READ BEFORE POSTING)**
+## Script catalog
 
-[Using the Script Fixer Upper](https://github.com/Ephenia/Pokeclicker-Scripts/issues/214)<br/>
-[Issue Guidelines](https://github.com/Ephenia/Pokeclicker-Scripts/issues/119)
+Script names link to source files in this checkout. **Install** links load the published browser userscript. Versions are taken from each script's metadata, not from the game or desktop loader version.
 
-**Only** use scripts if you have read and understood their descriptions! Report issues while using scripts here or on the Discord, **not** to the developers of Pokéclicker.
+### Automation and interface tools
 
-<hr>
+These scripts automate actions or change the interface. Individual options can extend normal limits, such as the number of simultaneous quests. Read the feature guide before enabling them.
 
-Various scripts & enhancements for the game [Pokéclicker](https://www.pokeclicker.com/).
+| Script | Version | What it does | Install |
+| --- | --- | --- | --- |
+| [Additional Visual Settings](additionalvisualsettings.user.js) | 3.0.1 | Hide selected battle visuals and add navigation shortcuts. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/additionalvisualsettings.user.js) |
+| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.1 | Adjustable auto clicking, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
+| [Auto Navigation](autonavigation.user.js) | 1.1.0 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
+| [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.5 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
+| [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.0 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
+| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.0 | Chisel/Hammer mining and optional sale of unlocked sellable treasures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautomine.user.js) |
+| [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.0 | Planting, harvesting, replanting, mulching, wanderer capture, stop timer and manual mutation plans. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/simpleautofarmer.user.js) |
+| [Auto Battle Frontier](autobattlefrontier.user.js) | 1.5.6 | Repeat Frontier runs using a maximum stage or attack-count limit. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattlefrontier.user.js) |
+| [Auto Battle Items](autobattleitems.user.js) | 1.1.4 | Use selected battle items automatically and optionally buy them at base price. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattleitems.user.js) |
+| [Auto Quest Completer](custom/autoquestcompleter.user.js) | 2.1.1 | Accept and claim quests, prioritize types and control refresh spending. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autoquestcompleter.user.js) |
+| [Auto Safari Zone](custom/autosafarizone.user.js) | 1.3.0 | Explore, capture and collect items. Seek New pursues visible uncaught Pokémon on land and water. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/autosafarizone.user.js) |
 
-These scripts were created for use with Script Manager browser extensions such as [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/). They should be compatible with most other Script Managers as well. If you have a Script Manager installed, you can click on the One-Click install links to easily install any scripts here.
+### Optional gameplay overrides
 
-If you are looking to use these scripts on the client version of Pokéclicker ([Pokéclicker Desktop](//github.com/RedSparr0w/Pokeclicker-desktop)), replace the <strong>app.asar</strong> file in the client with the [modified version from this repository](//github.com/Ephenia/Pokeclicker-Scripts/tree/master/desktop). For detailed instructions, see [here](//github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/README.md).
+These scripts can change normal game rules or directly change saved progression. They are individually installable.
 
-**If you are looking to have something specific created or have any inquiries, feel free to contact me directly (contact info on profile) OR [open and create an issue](https://github.com/Ephenia/Pokeclicker-Scripts/issues).**
+| Script | Version | What it does | Install |
+| --- | --- | --- | --- |
+| [Catch Speed Adjuster](custom/catchspeedadjuster.user.js) | 1.4.4 | Toggle zero-delay Poké Ball captures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/catchspeedadjuster.user.js) |
+| [Synthetic Shiny Synapse](custom/syntheticshinysynapse.user.js) | 1.5.4 | Configure shiny odds by source or globally, with optional Karma Mode. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/syntheticshinysynapse.user.js) |
+| [Debug Cheats Tools](custom/debugcheatstools.user.js) | 1.1.1 | Manual inventory, currency, Pokémon and quest-line editing. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/debugcheatstools.user.js) |
+| [Optional Resources](custom/optionalresources.user.js) | 1.0.0 | Explicit resource grants and a bounded online Dream Orb bonus. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js) |
+| [Optional Battle Cafe](custom/optionalbattlecafe.user.js) | 1.0.0 | Accelerated, bounded Café batches, reward-time overrides and extra spins. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js) |
+| [Optional Accelerators](custom/optionalaccelerators.user.js) | 1.0.0 | Farm speed, a hatch EV bonus and double route party-attack cadence. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js) |
+| [Omega Protein Gains](custom/omegaproteingains.user.js) | 1.2.1 | Optional Protein/Calcium cap overrides. Carbos remains capped at 70. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/omegaproteingains.user.js) |
+| [Challenge Mode Changer](custom/challengemodechanger.user.js) | 1.2.4 | Enable or disable challenges on an existing save. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/challengemodechanger.user.js) |
+| [Discord Code Generator](custom/discordcodegenerator.user.js) | 1.3.4 | Generate codes for Discord reward Pokémon without linking a Discord account. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/discordcodegenerator.user.js) |
+| [Infinite Seasonal Events](custom/infiniteseasonalevents.user.js) | 1.3.4 | Toggle seasonal events outside their normal dates, including simultaneous events. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/infiniteseasonalevents.user.js) |
+| [Oak Items Unlimited](custom/oakitemsunlimited.user.js) | 1.0.4 | Remove the limit on simultaneously equipped Oak Items. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/oakitemsunlimited.user.js) |
+| [Overnight Berries](custom/overnightberrygrowth.user.js) | 1.1.5 | Apply offline berry growth with ripe, withered or pre-wither harvest modes. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/overnightberrygrowth.user.js) |
+| [Perky Pokerus Pandemic](custom/perkypokeruspandemic.user.js) | 2.0.4 | Spread Pokérus between eligible hatchery eggs without matching types. Helper eggs are excluded. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/perkypokeruspandemic.user.js) |
+| [Simple Weather Changer](custom/simpleweatherchanger.user.js) | 1.4.4 | Override weather across regions, or return to Default Weather. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/simpleweatherchanger.user.js) |
 
-<a href="https://discord.gg/nfbT8zJSkd" target="_blank"><img src="https://discordapp.com/api/guilds/950947559474618440/widget.png?style=banner2" alt="Discord Banner 2"/></a>
+### Repair tool
 
-You may also [join my Discord server](https://discord.gg/nfbT8zJSkd) (can also click the banner above), be sure to grab the `PokeClicker` role from the `#pick-your-roles` channel to gain access to the Pokéclicker section.
+| Script | Version | What it does | Install |
+| --- | --- | --- | --- |
+| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.2 | Reset script-related local storage after confirmation. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
 
-**Please do make sure that you read the [Issues and PR Guidelines found here](//github.com/Ephenia/Pokeclicker-Scripts/issues/119) if you are wanting to open an issue, or if you wish to contribute to the project.**
+## Feature guide
 
-**More scripts and things that I create will be added in due time, when I am interested and or am motivated enough to work. Remember, that I do this all free of charge and ask for literally nothing in return. I mainly created this project to simply share my passion for this game and show ways that it can be improved and or be more fun.**
+### Auto Safari Zone
 
-**Vanilla scripts** are purely for automation or other QoL things.<br>
-**Custom scripts** are able to do or change things that aren't within the bounds of the vanilla game or they may be considered more cheaty.
+Open a Safari and turn **Auto Safari ON**. To look for species you do not own, also turn **Auto Seek New ON**. Normal species ownership is used for Seek New, not whether you own its shiny form.
 
-## Fork L4: optional Auto Navigation
+With Seek New enabled, movement follows this order:
 
-Install **both** `autonavigation.user.js` (1.0.0) and this fork's `enhancedautoclicker.user.js` (3.6.0). Open **Auto Navigation** above the battle view. This is a new optional script, not enabled automatically. Do not run the old Walker or autoAchievement prototypes alongside it. Current development changes are only available on the PR branch until merged, despite the eventual master update URLs in the headers.
+1. Pursue visible shiny Pokémon first.
+2. If **Auto Pick Items** is ON and only one Safari Ball remains, collect reachable items before spending that last ball.
+3. Pursue the nearest reachable visible uncaught Pokémon, on land or in water. Distance is measured along a walkable path, including detours around obstacles.
+4. If no visible uncaught target is reachable, return to random encounters in the preferred habitat.
 
-Choose a mode, set its limits, then press **Start** from a route or town. **Target count** is the lifetime total per location for Routes, Gyms and Dungeons (for example 10000, 1000, 500). **Current dungeon: additional clears** counts new wins from this start. Capture modes require an exact numeric species ID. All accessible regions are considered through native access checks, including subregions. Route totals are checked twice per second and pending captures finish before travel, so route defeat counts can exceed the threshold slightly. Gym and dungeon run limits are checked before starting the next run. Pokérus modes select only currently obtainable contagious Pokémon. Capture and resistance use existing ball settings and filters, so ensure those allow the intended captures. Headbutt-only route encounters are excluded. A missing, unavailable or stalled target cannot hold the controller indefinitely.
+Visible uncaught targets are checked again each movement tick. If a target moves, disappears or has been caught, the route is recalculated. Unreachable targets do not prevent the script from pursuing another reachable target or returning to random encounters.
 
-Active location quests supports **DefeatPokemonsQuest, DefeatGymQuest and DefeatDungeonQuest**. It neither accepts nor claims quests itself. The existing Auto Quest Completer can handle that separately. Other quest types are skipped, without changing hatchery filters or ball preferences. Gym and dungeon entries are started one at a time, using native completions and the clicker's existing dungeon pathfinding. Battle Frontier mode visits the unlocked town, without starting a Frontier run. Roamer mode battles normally on an accessible route with that currently roaming species, without repeatedly regenerating encounters. Purification uses the native flow threshold and resets flow normally. It purifies at most Target count Pokémon, stops when none remain and restores the previous chamber selection after each action. Starting from a route lets normal battles earn flow.
+**Grass or water?** For random encounters, Seek New compares currently available missing species in both habitats. If one habitat's missing-species pool contains the other's plus additional species, it prefers that habitat. Otherwise, it compares the weighted chance of encountering a missing species. Equal chances allow either habitat, using the closest reachable encounter tile. **Seek PKRS** also contributes contagious Pokémon to this habitat selection when enabled. It does not switch habitats on a fixed timer.
 
-**Money and dungeon-token budgets default to zero.** Enter an explicit finite budget and optional currency reserve to authorize paid dungeon entries or shop purchases. Each new Start creates a new budget. The shop buys one of the listed consumables at a time, only at its base price, until Target stock. It returns to the starting location between inflated-price checks. Start from a route so battling can lower prices. It stops at the budget or reserve, and never purchases a locked or unavailable shop item. These budgets apply to this controller's entry fees and purchases, not manual purchases, ball consumption, or unrelated scripts.
+| Control | Behavior |
+| --- | --- |
+| Auto Safari | Starts exploration and battles. Can pay for another entry and repeat while access and funds permit. |
+| Auto Pick Items | Collects items when one ball remains. Enabled by default. |
+| Auto Throw Bait | Uses berry bait for priority encounters when reserves permit, or ordinary bait toward the bait achievement. |
+| Auto Seek New | Pursues visible uncaught species and favors habitats containing missing species. |
+| Auto Seek PKRS | Prioritizes Pokémon your party currently marks as contagious. |
+| Auto Fast Anim | Halves the cached movement and battle animation timings. |
 
-**Stop & return** restores the starting location and previous clicker modes when that location remains accessible. Manual travel, external travel, or a clicker toggle cancels without returning or restarting the old Gym/Dungeon modes at the new location. A manually clicked toggle then performs the requested action. Session duration and no-progress limits are in real minutes, checked on the first tick after a suspended tab wakes. Reloading preserves configuration but leaves all three clicker automation modes OFF. It does not resume a navigation session. A capture already underway may still finish after a stop.
+During a visible uncaught pursuit, the script attempts to capture an uncaught encounter instead of fleeing it. Already-caught interruptions are skipped unless another enabled priority, such as Seek PKRS, applies. Shiny battles have their own capture strategy and may use bait even with Auto Throw Bait OFF. Berry bait requires more than 25 of the relevant berry for ordinary priority encounters, or more than 5 for shiny encounters.
 
-Auto Quest Completer 2.1.0 adds a separate **paid refresh budget** and money reserve in Scripts settings. Its default is free refreshes only. Enabling Auto does not refresh immediately. Paid refresh spend is bounded for each Auto session, and switching Auto OFF stops its reset timer. Reloading starts a fresh quest session. This does not affect manually requested native refreshes.
+**Stopping:** the first click on an active Auto Safari button requests a stop after the current Safari ends. Its button turns amber. A second click stops automation immediately. A game action already underway may still finish.
 
-L4 does not replace the dungeon exploration algorithm, stack purification flow, alter capture rules, change the tracked achievement widget, or automate other quest types. The original upstream ideas are credited in the new script. No implementation or bundled A* library from the old PRs is copied.
+**Limits:** Seek New does not stop automatically when every currently available species is caught. It then falls back to ordinary encounters. It does not change regions, unlock unavailable species or guarantee a successful catch. Safari entry fees are not covered by Auto Navigation's budgets.
 
-# Vanilla Scripts
-1. [**Additional Visual Settings** ](#additional-visual-settings)
-2. [**Auto Battle Frontier** ](#auto-battle-frontier)
-3. [**Auto Battle Items** ](#auto-battle-items)
-4. [**Catch Filter Fantasia** ](#catch-filter-fantasia)
-5. [**Enhanced Auto Clicker** ](#enhanced-auto-clicker)
-6. [**Enhanced Auto Hatchery** ](#enhanced-auto-hatchery)
-7. [**Enhanced Auto Mine** ](#enhanced-auto-mine)
-8. [**Simple Auto Farmer** ](#simple-auto-farmer)
-9. [**Script Fixer Upper**](#script-fixer-upper)
-10. [**Script Handler** (Included in desktop/app.asar)](#script-manager)
-# Custom Scripts
-- [**Optional Resources**](#optional-resources)
-- [**Optional Battle Cafe**](#optional-battle-cafe)
-- [**Optional Accelerators**](#optional-accelerators)
-1. [**Auto Quest Completer** ](#auto-quest-completer)
-9. [**Auto Safari Zone** ](#auto-safari-zone)
-2. [**Catch Speed Adjuster** ](#catch-speed-adjuster)
-3. [**Challenge Mode Changer** ](#challenge-mode-changer)
-4. [**Discord Code Generator** ](#discord-code-generator)
-5. [**Infinite Seasonal Events** ](#infinite-seasonal-events)
-6. [**Oak Items Unlimited** ](#oak-iems-unlimited)
-7. [**Omega Protein Gains** ](#omega-protein-gains)
-7. [**Overnight Berry Growth** ](#overnight-berry-growth)
-8. [**Perky Pokerus Pandemic** ](#perky-pokerus-pandemic)
-9. [**Simple Weather Changer** ](#simple-weather-changer)
+### Enhanced Auto Clicker and Auto Navigation
 
-```diff
-- Note: Please backup your saves before using any and all scripts that would be here!!!
-- Note: All scripts here would be 100% compatible with one another!!!
-- Note: Feel free to open an issue if you find any bugs/issues as these aren't fully tested!!!
-- Note: in case it isn't mention below, all user set settings with these scripts are saved and persist even upon game close!!!
+Enhanced Auto Clicker adds **Auto Click**, an attack-rate control, **Auto Gym** and **Auto Dungeon**. Dungeon options control exploration, fights and chest targeting. Actual throughput depends on the game and capture delays.
+
+Auto Navigation adds a separate panel above the battle view. Install both scripts, select an **Objective**, set its limits and press **Start** from a route or town.
+
+| Objective | Target and behavior |
+| --- | --- |
+| Route defeats, Gym wins, Dungeon clears | Target count is the lifetime total to reach at each eligible location. |
+| Current dungeon: additional clears | Counts new wins from this start. |
+| Capture species or roaming species | Enter the exact numeric species ID. Uses accessible locations and existing capture settings. |
+| Route or dungeon Pokérus resistance | Works on currently obtainable contagious Pokémon. |
+| Active location quests | Supports Pokémon-defeat, gym-defeat and dungeon-defeat quests already active. Does not accept or claim quests. |
+| Complete currently tracked achievement | Select a native route, gym or dungeon achievement first. Stops at its selected tier. |
+| Current League: additional cycles | Start in a League town. Target count is additional complete cycles, up to 10,000. |
+| Current zone: capture all available Pokémon or shiny | Start on a route or in a dungeon town. Target count caps additional route defeats or dungeon entries, including losses. |
+| Buy to stock target | Buys listed consumables only at base price and within the configured budget. Start from a route so battling can lower inflated prices. |
+| Visit Battle Frontier | Travels to the unlocked Frontier town without starting a Frontier run. |
+| Purify Shadow Pokémon | Uses native flow requirements and resets flow normally. Target count caps purifications. |
+
+**Money and dungeon-token budgets default to zero.** Set a budget and any desired reserve before paid entries or purchases. Budgets cover that navigation session only, not manual actions or other scripts. Session and no-progress time limits also apply to collection searches. They do not guarantee a shiny, and route totals may overshoot slightly between checks. Headbutt-only encounters are excluded from route searches.
+
+**Stop & return** restores the starting location and previous clicker modes where possible. Manual travel or a manual clicker toggle cancels without returning. Active navigation sessions never resume after reload. Do not run old Walker or autoAchievement prototypes alongside this controller.
+
+### Enhanced Auto Hatchery
+
+Open the Hatchery and enable **Auto Hatch**. Its controls include store-bought eggs, Pokérus handling, hatchery filters and a rotating list of priority species IDs.
+
+- **Filter Only** restricts selection to Pokémon matching the native hatchery filters.
+- **Priority IDs** are validated and rotated rather than continually selecting the first entry.
+- **Auto Queue** appends eligible Pokémon to the native queue, preserving existing order and avoiding duplicate entries. Its target is 1–100, bounded by your unlocked queue capacity. Requires Auto Hatch and pauses while PKRS Mode or Auto Egg is ON.
+- Turning Auto Queue OFF or changing filters does not remove entries already queued.
+- **Type efficiency** ranks eligible candidates by native breeding efficiency, regional multiplier and attack effectiveness against the selected target types. Pokérus and priority rotation still take precedence.
+
+**Auto Fossil and Shiny Fossils are disabled for game 0.10.26.** Fossils now use the game's town traders rather than the removed hatchery incubation system.
+
+### Simple Auto Farmer
+
+Open the Farm to access the controls. Enabled modes continue working while the Farm window is closed.
+
+| Mode | Behavior |
+| --- | --- |
+| Auto Plant | Plants the selected berry. |
+| Auto Harvest | Harvests ripe berries. |
+| Auto Replant | Harvests shortly before withering and replants the same berry. Mutually exclusive with Auto Plant and Auto Harvest. |
+| Auto Mulch | Renews the existing mulch near expiry. |
+| Auto Catch | Handles wanderers using native capture rules and ball settings, before harvesting. |
+| Mutation plan | Uses a manual 5×5 berry layout and reserves. Leaves occupied, locked and unassigned plots untouched. Turns Plant, Harvest and Replant OFF. |
+| Rich Mulch | Adds one unit to an eligible unmulched plant shortly before maturity, subject to a reserve and per-activation cap. Mutually exclusive with Auto Mulch. |
+
+The mutation plan arranges parent berries and empty spaces you choose. It does not design mutations for you or uproot existing plants. Farmhands remain independent.
+
+The **stop timer** accepts 1–10080 whole minutes. Starting it does not enable modes. Its deadline survives reloads and stops farm automation when reached, or at the next check after the tab wakes. Cancelling the timer leaves active modes unchanged. Mutation plan and Rich Mulch activation both start OFF after reload.
+
+### Enhanced Auto Mine
+
+Open the Underground and turn **Auto Mine ON**. It takes at most one action per second using Chisel or Hammer as durability permits. Enable the game's **Auto Restart** to continue to the next mine.
+
+**Auto Sell Treasure** sells the current stock of sellable, unlocked underground items after a layer is completed. Lock items you want to keep. Bombs are avoided. Old energy restores, survey/skip controls and the separate plate-selling mode are no longer part of this script.
+
+### Catch Filter Fantasia and Auto Quest Completer
+
+**Catch Filter:** open **Filter** under Poké Balls. Green species entries are eligible for capture. Enabled type filters also allow matching Pokémon. Set separate normal and shiny ball preferences per species, or leave them at the game's defaults. Right-click a ball preference to clear it. The optional Pokérus column helps inspect infection status. Capture-oriented automation still depends on your ball settings and stock.
+
+**Auto Quests:** use **Auto** and the reset-timer button in the quest panel. Configure maximum active quests, preferred types, refresh interval, paid-refresh budget and money reserve under **Settings → Scripts**. The default paid-refresh budget is zero, allowing free refreshes only. Turning Auto OFF stops its reset timer. Spending resets on a new Auto session or reload. This budget is independent of Auto Navigation's budgets.
+
+### Optional gameplay changes
+
+These tools change gameplay or saved progression. Turning an effect OFF stops future changes but does not undo resources, Pokémon, EVs or achievements already gained.
+
+| Script | Controls and limits |
+| --- | --- |
+| Synthetic Shiny Synapse | Open **Start Menu → Shiny Modifier**. Set category-specific odds, a global override, or Karma Mode. Odds are denominators: smaller values mean more frequent shiny rolls. Native shiny bonuses are preserved. |
+| Debug Cheats Tools | Open **Start Menu → Debug Cheats** for manual currency, inventory, Pokémon and quest-line actions. Currency Add grants the exact amount, Subtract stops at zero, and Repair applies only to invalid balances. Inventory grants are limited to 1,000,000 per click. |
+| Optional Resources | Enable its controls before making explicit grants of currencies, items, berries, Dream Orbs or purification flow. Flow respects the native cap and unlock. The Dream Orb bonus grants one random unlocked orb per observed visible hour, stopping after your chosen total of 1–100 orbs. Hidden/suspended time and offline catch-up do not count. Stop or reload discards partial time. |
+| Optional Battle Cafe | In the Café, select a sweet, recipe, reward time and a batch of 1–100. Accelerated results resolve every 0.1 seconds, including the hour-long recipe. Native berry costs and spin rules still apply. Unlock requirements, insufficient resources or an existing native spin prevent a batch. Extra spins are a separate manual grant. The reward-time override does not change the game clock. |
+| Optional Accelerators | Under **Settings → Scripts**, set farm speed to 0.5×, 2×, 5× or 10×, add one base EV per successful hatch through native eligibility rules, or enable 2× route party-attack cadence. Farm speed also affects withering, mutations and farmhands. Offline growth keeps its own timing. The attack toggle does not accelerate gyms, dungeons or the Frontier. |
+| Omega Protein Gains | Under **Settings → Scripts**, enable a personal Protein/Calcium ceiling or explicitly choose unlimited mode. Consumes actual vitamin stock and respects challenge/hatchery restrictions. Carbos remains capped at 70. Lowering the ceiling does not remove vitamins already used. |
+| Overnight Berries | Under **Settings → Scripts**, select offline growth until ripe, until withered, or harvest before withering. This is separate from online farm acceleration. |
+
+Optional Resources, Optional Battle Cafe, Optional Accelerators and Omega Protein Gains activation start OFF after reload. Other custom scripts can apply changes as soon as they load or restore saved preferences. Check their settings individually.
+
+## Settings and stopping automation
+
+- Browser script settings generally use local storage for the game site. A different browser profile or origin has separate settings and saves.
+- Installing a script and activating an individual mode are separate steps for scripts with ON/OFF controls. Some scripts apply their effect directly when enabled in the manager.
+- To unload a script, disable it in your userscript manager or desktop **Settings → Scripts**, then reload the game. Disabling an entry alone does not remove code already running in the current page.
+- Reload behavior is script-specific. Auto Safari, navigation sessions and the newer optional overrides start OFF. Some older automation modes restore their saved state.
+- Preserve a save export when testing overrides. Removing a script does not roll back changes already saved by the game.
+
+## Troubleshooting
+
+**A button is missing or an update has no effect**
+
+Check that the script is enabled, reload the game, then open the relevant game feature. Confirm the installed version and repository. If you are viewing a feature branch, a master Install link may still serve an older version.
+
+**Duplicate controls, unexpected behavior or a script-loading warning**
+
+Keep one enabled copy of each script, including upstream copies and copies installed under another name. Disable the suspected script and reload. If needed, reproduce with only that script and its required dependencies enabled.
+
+**Captures or objectives are not progressing**
+
+Check feature unlocks, Poké Ball stock, capture filters, budgets, reserves and session limits. Auto Navigation does not bypass native access checks. Auto Safari continues ordinary encounters when no missing species is currently available, and requires another entry fee when it starts a new Safari.
+
+**Mining waits or old fossil controls do nothing**
+
+Mining waits for durability and relies on the game's Auto Restart. Energy restores and layer skipping were removed. Use town traders for fossils.
+
+**Last resort: reset script settings**
+
+Script Fixer Upper is a troubleshooting tool, not a normal dependency. After confirmation it removes local-storage keys except those beginning with `save`, `player` or `settings`. This can remove settings from unrelated scripts too. Export your save first, then disable the fixer after use and reload. Prefer disabling one problematic script before a broad reset.
+
+**Report a problem**
+
+Open an [issue in this fork](https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues). Include the game version, script names and versions, browser/OS or desktop runtime, enabled options, reproduction steps, and any console error. Report script problems here rather than to the Pokéclicker game team.
+
+## Compatibility and validation
+
+This fork targets **Pokéclicker 0.10.26**. Previously exercised environments are **Zen 1.23.4b with Tampermonkey 5.5.0** and **Electron 21.3.1 on macOS**. Windows, Linux, other userscript managers, other game versions and every combination of scripts have not been validated.
+
+The current source suite contains **252 automated tests**, including **22 Safari tests**. Coverage includes Safari pathfinding and capture priorities, mining, farming, hatchery filters and queues, navigation limits, quest budgets, custom overrides, desktop script loading/updating, and archive contents matching the source files and license notices. Passing these tests is not a guarantee of hours of background operation or every game region.
+
+Safari movement, bait, captures, item collection and stopping were also checked in a live Kanto session with version 1.2.5. The new visible-uncaught pursuit in **Auto Safari 1.3.0** is covered by automated tests and code review. Installing that update alone does not establish that the new pursuit has been exercised in a live session.
+
+## Development
+
+Use Node.js 18 or later. From the repository root:
+
+```sh
+npm ci
+npm test
 ```
 
-<hr>
+To package the desktop loader with the scripts and license notices from your current checkout:
 
-<a name="additional-visual-settings"></a>
-## Additional Visual Settings (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/additionalvisualsettings.user.js">additionalvisualsettings.user.js</a>) (<a href="//github.com/Ephenia/Pokeclicker-Scripts/raw/master/additionalvisualsettings.user.js">One-Click Install</a>)
-This script adds new options to customize the game's graphics alongside a handful of other quality of life features.
-
-### **Visual Settings**
-
-The script's visual settings save on performance by disabling parts of the HTML that can change rapidly. There are settings for route battles, gym battles, dungeons, and the battle frontier. All of them can be found in the Scripts settings tab.
-
-If the Enhanced Auto Clicker script is installed, an additional setting is available to only apply the above visual settings when the autoclicker is running. This lets you improve performance when grinding but still experience the game's graphics the rest of the time.
-
-### **Convenience features**
-
-The script adds various buttons for quicker navigation and quality of life.
-
-• Quick Settings, Inventory, and Pokédex buttons, found to the left of the Start Menu.<br/>
-• Quick Dock, Gyms, and Dungeons buttons, found above the Town Map so you don't have to search for them. The Gyms and Dungeons buttons show all in the current region.<br/>
-• Optimize vitamins buttons, found in the all vitamins menu. This feature uses the optimal combination of vitamins for your current region on the pokemon you select (assuming you have enough). It looks like a set of scales: ⚖
-
-<hr>
-
-<a name="auto-battle-frontier"></a>
-## Auto Battle Frontier (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/autobattlefrontier.user.js">autobattlefrontier.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/autobattlefrontier.user.js">One-Click Install</a>)
-This script adds in a stage resetter to the Battle Frontier.<br>
-
-![](https://github.com/Ephenia/Pokeclicker-Scripts/assets/12092270/3e2200c4-294d-4a9f-9351-b03ff0d2bd96)
-
-You can specify a maximum stage in the input box on the right. When you complete that stage, you will earn the Battle Points and money for failing the stage, and then restart from the beginning. This allows you stay inside the Battle Frontier indefinitely farming BP while fully AFK.
-
-The Max Attacks mode restarts the Battle Frontier when you reach a stage with battles that you cannot defeat in the specified number of attacks, allowing you to loop through the early stages for quicker farming. The button toggles through 1 attack, 2 attacks, and disabling the mode. Max Attacks is an enhancement of the previous One Click mode: the two-attack mode is slightly more efficient for farming BP.
-
-<hr>
-
-<a name="auto-battle-items"></a>
-## Auto Battle Items (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/autobattleitems.user.js">autobattleitems.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/autobattleitems.user.js">One-Click Install</a>)
-This script adds in automation for Battle Items:<br>
-
-![image](https://user-images.githubusercontent.com/26987203/178172097-3f733731-a15d-4ed9-b82a-f8476a39a4ff.png)
-
-It's quite simple how it works, and this also aims to be efficient as possible.
-
-You can click the area of the specific Battle Item's quantity to toggle its automation. By default, they are all red, but when toggled on they will turn green.
-
-When active, Battle Items will be bought as long as you've unlocked the earliest Town Shop that sells said Battle Items, also if you currently possess an exact quantity of 0 of them as well. Battle items will also only be bought when there is no price penalty involved with them. This means you would need to be battling Pokémon to keep the base price of them down.
-
-Battle Items will automatically be used when you have at least 1 available, as you would expect.
-
-<hr>
-
-<a name="catch-filter-fantasia"></a>
-## Catch Filter Fantasia (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/catchfilterfantasia.user.js">catchfilterfantasia.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/catchfilterfantasia.user.js">One-Click Install</a>)
-So, this script would be adding a Filter button to the Pokeballs section:
-
-![image](https://user-images.githubusercontent.com/26987203/170853489-de1f9304-9a91-45d1-aa0e-904f5c1709ed.png)
-
-When you open the Filter, it will bring you to the all brand new Catch Filter:
-
-![image](https://user-images.githubusercontent.com/26987203/170853561-4d0fe3e0-73e7-4dee-af93-cd50c69ccdde.png)
-
-So, how this works is when you have the Catch Filter on, basically the Catch Filter would somewhat be overriding the normal ball selection that you'll find (as shown in the 1st screenshot) and what we've always been used to.
-
-You can now better think of the normal ball selection as a "default" ball selection for things when you have the Catch Filter active.
-
-Now, to start using the Catch Filter, it should be pretty easy and straight forward.
-
-You can start typing a Pokémon's name (can be case-insensitive) that you'd like to filter, like so:
-
-![image](https://user-images.githubusercontent.com/26987203/170853705-8798099c-ae29-42f1-a775-8d1864640ee0.png)
-
-To filter a Pokémon, you can click on them:
-
-![image](https://user-images.githubusercontent.com/26987203/170853732-86a3adbd-4a37-4557-bced-1ab5f7cb134c.png)
-
-The green indicates that they are filtered. When a Pokémon is filtered, **that means that they are allowed to be caught**.
-
-To the right, you will see 2 Pokéballs.
-
-When they are blank (default), then the Pokéballs being used to capture their normal and shiny variation will be set to whatever you have as a default selection normally (as shown in the 1st screenshot).
-
-The left Pokéball is for the normal variation of the specified Pokémon.
-
-The right Pokéball is for the shiny variation of the specified Pokémon.
-
-To select the Pokéball you want to capture the specified Pokémon, you must click the Pokéball. Clicking the Pokéball will cycle through all the available Pokéballs. Right-clicking the Pokéball will also reset/clear it back to default, that's if you don't cycle through all the options by clicking or don't want to.
-
-Here's an example:
-
-![image](https://user-images.githubusercontent.com/26987203/170853904-ed1d86de-0dc2-4b48-b60d-859bcdb5aff0.png)
-
-Here I have normal Eevees encountered set to be caught with normal Pokéballs, however if a shiny Eevee appears, then it will be attempted to be caught with an Ultra Ball.
-
-Remember, this will only work if the Catch Filter is on AND it is highlighted green. Simple and straight forward, yes? Good.
-
-Now, there are type catching filters:
-
-![image](https://user-images.githubusercontent.com/26987203/170853970-a1c50d8c-3f47-4cc4-ae9b-218d6578cf2a.png)
-
-If you turn these on, then Pokémon that match the specified type(s) will be caught. Yes, both single and dual typing Pokémon are accounted for here. So, for example, if you have only the Flying type filter on, then a Pidgey will still get caught because one of its types just so happens to be Flying type.
-
-Now, an important thing to note. This is **VERY** important.
-
-**When you have the type filters on, these type filters will ignore Pokémon that you have filtered or not regardless. That's if the typing(s) are matching said Pokémon.**
-
-**On top of that, if you have any Pokéballs specified on Pokémon in your filters, then these Pokémon will be attempted to be caught using the balls that you have set on them.**
-
-**This means that you should be mindful of what Pokéballs that you're setting specifically on specific Pokémon.**
-
-Another thing to know too, is if you set a Pokéball that you have 0 quantity of to a Pokémon to be caught with, then the Pokéball that they will be caught with will resort to what you have set to as default settings (as shown in the 1st screenshot).
-
-I think this would cover mostly everything, but if there are any other questions too, then I can answer them.
-
-I think the rest of the buttons there are self-explanatory, and you guys can have fun testing that stuff out and playing around with it.
-
-<hr>
-
-<a name="enhanced-auto-clicker"></a>
-## Enhanced Auto Clicker (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/enhancedautoclicker.user.js">enhancedautoclicker.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/enhancedautoclicker.user.js">One-Click Install</a>)
-
-This script is based on one originally created by <b>Ivan Lay</b>, which [can be found here](https://github.com/ivanlay/pokeclicker-automator). 
-
-<img width="608" src="https://user-images.githubusercontent.com/12092270/283228302-872fd66d-e8e8-488c-afdd-e9b8ef550d77.png">
-
-The main Auto Clicker button can be found under your currencies. Clicking it toggles the Auto Clicker on/off without the need of a refresh. This setting will also save and persist through page refresh/close.
-
-You can also adjust the number of clicks made per second. Higher click rates still max out at 20 enemies defeated per second, as the Auto Clicker makes multiple clicks simultaneously to reduce lag. Please note that while older script versions allowed you to set the Auto Clicker to up to 1000 clicks per second, this setting and its resulting click measurements <strong>were not</strong> accurate. The game engine cannot support speeds that high and the current version should provide similar performance.
-
-The Auto Clicker button displays various statistics while running:<br>
-
-<strong>• Clicker Efficiency</strong> - How close the Auto Clicker is to its maximum speed. The closer to 100%, the better.<br>
-<strong>• Clicks/s</strong> or <strong>DPS</strong> - The number of clicks per second or click damage per second the Auto Clicker is producing.<br>
-<strong>• Req. Clicks</strong> or <strong>Req. Click Damage</strong> - The number of clicks or click attack necessary to one-shot enemies in the current route, gym, or dungeon. The color changes depending on whether you meet the requirement. This ignores dungeon boss health and health bonuses from dungeon chests.<br>
-<strong>• Enemy/s</strong> - How many enemies you are defeating per second.<br>
-
-You can switch between clicks and damage display modes in the settings menu. Statistics are averaged over the last ten seconds, reset upon changing locations.
-
-### **Auto Gym**
-
-The Auto Gym feature is found below the Auto Click button. Some notes about how this works:
-
-• Auto Gym will only work while the Auto Clicker is active.<br>
-• Auto Gym when activated will automatically fight the Gym in the town you are in.<br>
-• There is a dropdown to the right of the Auto Gym button which is meant for Elite Fours and other towns with multiple gyms. The number that you set this to determines which gym or Elite Four member you will fight. For example, if you set it to #5 while at a Pokemon League, you will fight the Champion. However, if you set Auto Gym to fight a gym you have not yet unlocked, you will instead end up fighting the last unlocked gym in that town (if one exists) until you restart Auto Gym or select a different gym to fight. 
-
-### **Auto Dungeon**
-
-The Auto Dungeon feature is found below the Auto Click button. Some notes about how this works:
-
-• Auto Dungeon will only work while the Auto Clicker is active.<br>
-• Auto Dungeon when activated will automatically explore the current dungeon, or begin exploring a dungeon whose entrance you are at.<br>
-• If Flash is unlocked for a dungeon, Auto Dungeon will use it to explore more efficiently.<br>
-• If the settings menu option "Auto Dungeon finishes dungeons before turning off" is enabled (as is default), Auto Dungeon will not immediately stop when toggled off. It will finish exploring the current dungeon and stop after defeating the boss. Clicking the Auto Dungeon button a second time will stop it immediately without finishing the dungeon.<br>
-• The two buttons to the right of the Auto Dungeon button control its modes.<br>
-&emsp;&emsp;• When fights mode is on, Auto Dungeon will find and fight every enemy on the floor.<br>
-&emsp;&emsp;• When chests mode is on, Auto Dungeon will find every chest on the floor and open them before fighting the boss.<br>
-&emsp;&emsp;• When neither mode is on (both buttons are greyed out), Auto Dungeon will just find and fight the boss as quickly as possible.<br>
-• The dropdown menu determines which chests Auto Dungeon will open. It will only open chests of the selected rarity or higher.<br>
-&emsp;&emsp;• If the settings menu option "Always open visible targeted chests" is enabled, Auto Dungeon will open chests of sufficient rarity even when chests mode is off. It will open any visible chests right before fighting the boss but not explore the floor to reveal potential other chests.<br>
-
-<hr>
-
-<a name="enhanced-auto-hatchery"></a>
-## Enhanced Auto Hatchery (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/enhancedautohatchery.user.js">enhancedautohatchery.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/enhancedautohatchery.user.js">One-Click Install</a>)
-This script is based on one created by <b>Ivan Lay & Drak</b> which [can be found over here](//greasyfork.org/en/scripts/432768-auto-hatchery-edit-pokeclicker-com).
-
-The Auto Hatchery automatically hatches completed eggs and places eligible Pokémon or store eggs in free hatchery slots. Fossil incubation has been removed from the game, so its legacy buttons remain disabled.
-
-![](https://i.imgur.com/VpL6TTr.png)
-
-This button on the main-screen hatchery display toggles the Auto Hatchery.
-
-![](https://github.com/Ephenia/Pokeclicker-Scripts/assets/12092270/acc89fd5-c559-4e21-a86b-ff2661f7bf3d)
-
-These buttons inside the hatchery control the various Auto Hatchery modes, which activate in the following order.
-
-• PKRS Mode tries to spread Pokerus. If you have an uninfected pokemon and a contagious pokemon that share a type, it will put them in the hatchery together.<br/>
-• Auto Egg hatches eggs (the items), if you have any. Filter Only pauses this mode because a random store egg cannot be checked against Pokémon filters.<br/>
-• Auto Fossil and Shiny Fossils are unavailable in the current game. Use native town traders manually.<br/>
-
-If none of the above modes have targets, the hatchery uses your saved priority IDs, alternating with other eligible Pokémon in hatchery sort order. Priorities rotate through IDs and their matching forms. Without priorities, the first eligible Pokémon matching your hatchery filters is selected, falling back to the party when no match is available.
-
-**Filter Only** disables that fallback and applies the current hatchery filters to priorities and both Pokérus partners. An empty filter waits instead of loading an unrelated Pokémon. Already incubating eggs still hatch. Pokérus pairing needs two free manual slots and retains precedence over priorities.
-
-**Priority IDs** accepts comma or space separated IDs. For example, `479` includes all Rotom forms, whereas `479.01` selects Heat Rotom exactly. Unknown or malformed IDs reject the whole edit without changing the saved list. Empty input clears the list. Priorities and Filter Only persist across reloads. Priority IDs choose Pokémon for free egg slots and do not automatically fill the native waiting queue.
-
-<hr>
-
-<a name="enhanced-auto-mine"></a>
-## Enhanced Auto Mine (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/enhancedautomine.user.js">enhancedautomine.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/enhancedautomine.user.js">One-Click Install</a>)
-This script was originally created by <b>Ivan Lay</b> and [can be found over here](//github.com/ivanlay/pokeclicker-automator).
-
-This I had worked quite a bit on, and I'm quite happy with what it's capable of doing. This is far bigger and does a lot more than Ivan Lay's script. However, since I was using it and was inspired, I decided to make an auto miner that's as efficient as possible instead.
-
-What this script adds is a new top row below the mining layer, as shown:<br>
-
-![](https://user-images.githubusercontent.com/12092270/184208280-9ef59caf-5b0f-402a-be12-049cdad8beb3.png)
-
-There's a lot to go over and explained with this Auto Miner, but I'll try my best to explain it all:
-
-**• Auto Mine** - This will turn the Auto Miner On/Off. The Auto Miner uses bombs to automatically mine.<br>
-**• Auto Small Restore** - This will automatically buy and use Small Restores when low on energy (only while Auto Mine is running). It will only buy them when there are no Restores in your inventory and when they cost 30,000 (base price). Knowing that, this is best used anywhere you can one-shot Pokémon, so the price penalty in the Shop is constantly decreasing.<br>
-**• 1st Input Field** - The money amount below which the script will stop auto-buying Small Restores, so it won't drain all your money.<br>
-**• Dropdown Menu** - This menu lets you choose a type of item for the Treasure Hunter mode. While you have skips available, the Treasure Hunter will survey layers and skip them if they contain too few of your desired item type. The Treasure Hunter's default setting skips layers with too few total items.<br>
-**• 2nd Input Field** - The minimum number of your desired item type (or total items) for the Treasure Hunter. If the layer has fewer of the set item type the Treasure Hunter will skip it. Set this field to 0 to not skip any layers.<br>
-
-As of 1.1 this also includes 2 more additional features into the Treasures tab of the Underground as shown below:<br>
-
-![](https://i.imgur.com/H0btTjL.png)
-
-<strong>• Auto Sell Treasure</strong> - This will automatically sell any and all treasures that would give you Diamonds upon successfully mining an Underground layer.<br>
-<strong>• Auto Sell Plate</strong> - This will automatically sell any and all plates that would give you gems upon successfully mining an Underground layer.
-
-```diff
-- Note: the Auto Miner runs once every 1 second.
+```sh
+npm run build:desktop
 ```
 
-<hr>
-  
-<a name="simple-auto-farmer"></a>
-## Simple Auto Farmer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/main/simpleautofarmer.user.js">simpleautofarmer.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/simpleautofarmer.user.js">One-Click Install</a>)
-This script is a simple Auto Farmer which adds five mode buttons and a stop timer below the Plant and Harvest all buttons as shown:<br>
+This rebuilds `desktop/app.asar` from `desktop/app_src`, the root/custom userscripts and `LICENSE`. Rebuild after changing bundled scripts, desktop sources or notices. The packaging test rejects an archive that no longer matches these files. The [desktop guide](desktop/README.md) describes the loader and update behavior.
 
-![](https://i.imgur.com/ei7lR95.png)
+When changing a script, update its metadata version and this catalog, document user-visible behavior, and add focused regression coverage for behavior changes. Keep download/update URLs on this fork. A local edit or test run does not publish a release to `master` or update an already-running browser tab.
 
-• Auto Farm will plant the berry that you have selected.<br/>
-• Auto Harvest will harvest all ripe berries.<br/>
-• Auto Replant will wait for ripe berries to be close to withering before harvesting, then replant the same kind of berry in that plot. This can be especially useful for mutating berries.<br/>
-• Auto Mulch will wait for mulch to be close to running out, then use the same kind of mulch on that plot.<br/>
-• Auto Catch handles farm wanderers using the native capture rules and ball settings. It works independently and checks wanderers before harvesting.
+## Credits and licenses
 
-**Stop timer:** enter 1–10080 whole minutes and choose Start timer. It does not enable any mode. The deadline survives reloads and turns all five modes OFF before further actions when it expires. A background or sleeping tab checks the elapsed wall-clock time as soon as it resumes. Cancel timer preserves the active modes. The saved duration remains available for the next timer. A native capture already in progress may finish after Auto Catch stops.
+The userscript collection is licensed under [GNU GPL v3](LICENSE). Original authorship and license headers are retained, and modifications to inherited userscripts carry dated fork notices. This permission covers the scripts, not ownership of Pokémon names, artwork or other third-party material.
 
-The Auto Farmer runs even while the farm window is closed. It also now saves your berry selection when the game restarts, to avoid farming interruptions.
+The original collection was developed by **Ephenia** and contributors and is available at [ephymew/Pokeclicker-Scripts](https://github.com/ephymew/Pokeclicker-Scripts). Script-specific credits include **Optimatum / umbralOptimatum, Ivan Lay, Drak, KarmaAlex, Pastaficionado, Kanzen01, kevingrillet**, and the other authors named in those headers. Fork additions and adaptations are maintained by **Axxxxpirine**. Ideas credited in the source include navigation work by **goldhaxx, Bowbylone / Dionisos94 and Sorrow**, wanderer capture by **CatapultingWizard**, and the Dream Orb proposal by **EasyGoinGaming**.
 
-```diff
-- Note: the Auto Farmer runs once every 1 second.
-- Note: Auto Replant cannot be used alongside Auto Plant or Auto Harvest.
-```
+The desktop integration builds on [Pokéclicker Desktop](https://github.com/RedSparr0w/Pokeclicker-desktop), whose package declares **ISC** and credits **RedSparr0w**. The bundled userscripts remain GPL-3.0, and dependencies retain their own licenses. The archive includes the full GPL text and [component notices](desktop/app_src/NOTICES.md). Its editable sources are in [desktop/app_src](desktop/app_src), with the [build script](scripts/build-desktop.cjs) provided in this repository. These notices describe component origins and do not relicense third-party code.
 
-<hr>
-
-<a name="script-fixer-upper"></a>
-## Script Fixer Upper (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/scriptfixerupper.user.js">scriptfixerupper.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/scriptfixerupper.user.js">One-Click Install</a>)
-
-This script resets the settings of all your other installed scripts. It is intended **only** for troubleshooting and fixing buggy behavior, as described [here](//github.com/Ephenia/Pokeclicker-Scripts/issues/214).
-
-When you open the game with this script installed, it will bring up a confirmation box asking if you are sure you want to proceed. Confirming will remove **all** non-game data from localStorage, including any data from other people's scripts. While this should not affect your save data, you should make backups first just to be safe.
-
-This script should be your first step if you are experiencing bugs, especially after a script update. Otherwise you should **never** have this script enabled. Asking about a pop-up that resets your scripts is a clear sign of using scripts without first checking what they do! Don't do this!
-
-<hr>
-
-<a name="script-manager"></a>
-## Script manager (Exclusive to the desktop client) (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/">app.asar</a>)
-
-This script provides desktop client support for userscripts, allowing you to run or disable userscripts like a userscript manager browser extension does. All the scripts in this repository are supported and are by default automatically downloaded and updated. It can also run other userscripts that you install. Options are located in the <strong>Scripts</strong> tab in the game's settings menu. 
-
-This script is only compatible with the desktop client. For detailed instructions on installing and using the script manager, see [here](//github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/master/desktop/).
-
-<img width="840" alt="Script manager options" src="https://github.com/Ephenia/Pokeclicker-Scripts/assets/12092270/dc19411e-c565-48cb-8be6-6ac9b8abe17b">
-
-<hr>
-
-<a name="optional-resources"></a>
-## [Custom] Optional Resources
-
-[Install Optional Resources](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalresources.user.js)
-
-In **Save → Optional resources**, explicitly enable cheats for this session, choose a resource and enter a whole quantity. Adds currencies through the native wallet (without bonuses), current mining items and Key Stone through their native item APIs, berries, Dream Orbs, or purification flow. The flow chamber must be unlocked and flow is limited to the native cap. Currency statistics and berry unlocks can change too. Quantities must be 1–1,000,000,000 and totals must remain within JavaScript's safe numeric range.
-
-The optional hourly Dream Orb bonus runs only after Start, for at most 1–100 orbs. It counts observed time while the page is visible, excludes suspended/hidden time, and awards one randomly selected unlocked orb per hour. Stop or reload discards partial progress. It does not award offline catch-up. Inspired by EasyGoinGaming's [PR #416](https://github.com/ephymew/Pokeclicker-Scripts/pull/416), rewritten for the current game. Key Stone is granted directly, without changing the mining pool or introducing artificial item IDs.
-
-<a name="optional-battle-cafe"></a>
-## [Custom] Optional Battle Cafe
-
-[Install Optional Battle Cafe](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalbattlecafe.user.js)
-
-In the **Battle Cafe** window, select a sweet, spin recipe, reward time and batch size (1–100), then explicitly start an accelerated batch. One result is resolved every 0.1 seconds, including the hour-long Cheesy Milcery recipe. Each result pays the native berry cost and consumes a daily spin unless the resulting Pokémon is resistant, matching the native exemption. The Café must be unlocked. Insufficient berries, missing spins, or an existing native spin stop/prevent the batch. Stop cancels pending results. Extra spins can be granted separately, 1–100 per click.
-
-Recipe names state the time needed for their flavor. Choose the matching Day/Night/Dusk override to guarantee that flavor. The override is scoped to reward calculation and does not change the game clock. This controls one selected recipe per batch, not an automatic tour of every sweet and form.
-
-<a name="optional-accelerators"></a>
-## [Custom] Optional Accelerators
-
-[Install Optional Accelerators](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js)
-
-In **Settings → Scripts**, choose farm speed 0.5×, 2×, 5× or 10×. This scales complete online farm updates, including growth, withering, mulch, mutations, wanderer checks and farmhands. Faster farmhands may spend berries and money faster. Auto Farmer polling and offline growth keep their own timing. The separate hatch option adds one base EV through the native effort-point calculation after a successful hatch, including helpers. Pokérus eligibility, multipliers, held items and the slow-EV challenge apply. No extra shiny or shadow multiplier is added. A separate 2× party-attack toggle advances only the route combat counter. It leaves capture delays, damage, game time, gyms, dungeons and Battle Frontier unchanged.
-
-**All L5 effects start OFF after each reload.** Each script is separately installable and can be disabled. Turning effects OFF stops future behavior and restores native methods where applicable. It does not remove resources, Pokémon, EVs, achievements or other progression already earned. Export a save first and test on a copy. No script in this lot changes the save schema, adds hatchery slots, or intercepts version migrations to keep MissingNo. Same-version MissingNo serialization is already preserved by game 0.10.26. The combined scripts are tested on isolated copies in Electron/macOS and Zen/Tampermonkey. Windows/Linux and other game versions are not validated.
-
-<hr>
-
-<a name="auto-quest-completer"></a>
-## [Custom] Auto Quest Completer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/autoquestcompleter.user.js">autoquestcompleter.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/autoquestcompleter.user.js">One-Click Install</a>)
-This script automatically completes and starts quests and can be toggled with this button:<br>
-
-![image](https://i.imgur.com/3AYaNes.png)
-
-The script now has settings in the Settings menu that let you customize its behavior.
-
-• <strong>Max quest slots</strong> — Overrides the number of quests you can have active simultaneously, anywhere from just 1 to all 10 quests.</br>
-• <strong>Quest reset timer</strong> — Choose a period of time (in minutes) to refresh your quests after if any are incomplete. Turn the timer on and off with the button at the bottom of the quest display.
-• <strong>Preferred quest types</strong> — Choose which quest types to prioritize. The script will automatically refresh your quests if all current preferred quests have been completed, though it will claim any unpreferred quests that happen to complete. If you are using fewer than 10 quest slots, prioritized quests will be selected first.
-
-<hr>
-
-<a name="auto-safari-zone"></a>
-## [Custom] Auto Safari Zone (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/autosafarizone.user.js">autosafarizone.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/autosafarizone.user.js">One-Click Install</a>)
-
-This script automatically explores the Safari Zone and Friend Safari, catching Pokémon and collecting items for you. You can activate the script while in the window for either Safari.
-
-The script also has the following options:
-<strong>• Auto Pick Items</strong> - Pick up items when only one ball is left (enabled by default)
-<strong>• Auto Throw Bait</strong> - Throws berries when seeking uncaught or contagious Pokémon, or regular bait if you need a bait achievement. 
-<strong>• Auto Seek New</strong> - Prioritizes catching uncaught Pokémon.
-<strong>• Auto Seek PKRS</strong> - Prioritizes catching contagious Pokémon (below 50 EVs).
-<strong>• Auto Fast Anim</strong> - Increases the speed of many animations. Stacks with the Safari Level speed bonuses.
-
-The auto bait setting will never use your last berry. The script will always use optimal berries to catch shiny Pokémon, whether or not auto bait is enabled.
-
-<hr>
-
-<a name="catch-speed-adjuster"></a>
-## [Custom] Catch Speed Adjuster (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/catchspeedadjuster.user.js">catchspeedadjuster.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/catchspeedadjuster.user.js">One-Click Install</a>)
-This script adds in a new option found below your Pokéballs:<br>
-
-![image](https://i.imgur.com/C6aVzND.png)
-
-This currently will make all of your Pokéballs catch Pokémon at 0 delay (basically catch Pokémon as fast as you can defeat them).
-
-<hr>
-
-<a name="challenge-mode-changer"></a>
-## [Custom] Challenge Mode Changer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/challengemodechanger.user.js">challengemodechanger.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/challengemodechanger.user.js">One-Click Install</a>)
-This script changes how Challenges work:<br>
-
-![image](https://i.imgur.com/zsPsiSg.png)
-
-This makes it so that you can click the actual buttons and makes them able to enable/disable their respective challenges.
-
-Most of the Challenges should update and take immediate effect. However, there may be wonky and unexpected side effects with certain Challenges, as this would still need testing and this is new to us all.
-
-Also, yes, changing these will give you the respective Challenge ribbons on your player card or remove them. It's no different from activating Challenges on a completely fresh save.
-
-<hr>
-  
-<a name="discord-code-generator"></a>
-## [Custom] Discord Code Generator (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/discordcodegenerator.user.js">discordcodegenerator.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/discordcodegenerator.user.js">One-Click Install</a>)
-This script will let you generate infinite amounts of Discord codes for all of the exclusive Pokémon locked behind Pokéclicker's Discord bot:<br>
-
-![image](https://i.imgur.com/5Agit4Q.png)
-
-You can claim as many Pokémon as you want just by clicking buttons, and they are also generated no differently than normal.
-  
-This also would **NOT** require you to link up a Discord account (for those without an account or prefer to not use Discord).
-
-This script also works while offline.
-
-<hr>
-  
-<a name="infinite-seasonal-events"></a>
-## [Custom] Infinite Seasonal Events (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/infiniteseasonalevents.user.js">infiniteseasonalevents.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/infiniteseasonalevents.user.js">One-Click Install</a>)
-This script adds in a new settings option to the top of the Start Menu:<br>
-
-![image](https://user-images.githubusercontent.com/26987203/139570136-78e45d86-97ce-4fec-aa31-3459fbf19e04.png)
-
-This will give you access to all of the seasonal events in the game:<br>
-
-![image](https://user-images.githubusercontent.com/26987203/139570151-70f47769-40b1-4ec4-aa15-9eac50f33b39.png)
-
-The events also show all the Pokémon that are brought along with them.
-
-You can click on them to start any event that you desire. You are also able to activate more than 1 event simultaneously. They can be toggled on or off at any time. These events will run basically without end, at least not ending at any time you would really have to worry about.
-
-There may be some other cool or neat custom events added in with this as well.
-
-<hr>
-
-<a name="oak-items-unlimited"></a>
-## [Custom] Oak Items Unlimited (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/oakitemsunlimited.user.js">oakitemsunlimited.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/oakitemsunlimited.user.js">One-Click Install</a>)
-This script removes the limit for the amount of Oak Items that you're able to equip:<br>
-
-![image](https://i.imgur.com/0Peh94W.png)
-
-All items are able to work together just fine, including leveling simultaneously with each other. Also, this is fully compaitable and functional with Loadouts.
-
-This also removes any requirements needed to unlock any Oak Item slots, meaning you get the max number of slots given to you on a fresh save.
-
-<hr>
-
-<a name="omega-protein-gains"></a>
-## [Custom] Omega Protein Gains (<a href="https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/blob/codex/l5-custom-options/custom/omegaproteingains.user.js">omegaproteingains.user.js</a>) (<a href="https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/omegaproteingains.user.js">One-Click Install</a>)
-In **Settings → Scripts → Omega Protein Gains**, enable the optional native-limit override, then set a personal Protein/Calcium ceiling per Pokémon (default 1000). Unlimited Protein/Calcium requires a separate explicit switch. Both switches start OFF on each reload, and only the numeric ceiling is saved. Carbos remains capped at 70 while enabled. Existing vitamins are never removed when lowering the ceiling or disabling the script. Stock, the no-vitamins challenge and hatchery restrictions are respected. The game's expanded vitamin table already lets you enter a target amount directly, including quantities above 10.
-
-<hr>
-
-<a name="overnight-berry-growth"></a>
-## [Custom] Overnight Berry Growth (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/overnightberrygrowth.user.js">overnightberrygrowth.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/overnightberrygrowth.user.js">One-Click Install</a>)
-This script allows berries to grow while the game is closed, simulating their growth when the game loads. No mutations occur, aside from Kebia replanting, and Farm Hands are not active. Withered berries can replant as normal, but the script will ignore replanted berries to avoid lag. You can choose between three modes in the settings: 
-
-- Until ripe: Berries will only grow until they are ripe and no time will pass for already-ripe berries. The default mode.
-- Until withered: Berries will continue aging once they are ripe and may wither.
-- Harvest before withering: Berries will continue aging once they are ripe, but the script harvests berries right before they would wither (during offline growth only).
-
-<hr>
-
-<a name="perky-pokerus-pandemic"></a>
-## [Custom] Perky Pokerus Pandemic (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/perkypokeruspandemic.user.js">perkypokeruspandemic.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/perkypokeruspandemic.user.js">One-Click Install</a>)
-This script makes Pokérus spread inside the Hatchery without needing your Starter Pokémon inside for this to be accomplished.
-
-This script will run and work automatically without needing to do anything else.
-
-<hr>
-
-<a name="simple-weather-changer"></a>
-## [Custom] Simple Weather Changer (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/blob/master/custom/simpleweatherchanger.user.js">simpleweatherchanger.user.js</a>) (<a href="https://github.com/Ephenia/Pokeclicker-Scripts/raw/master/custom/simpleweatherchanger.user.js">One-Click Install</a>)
-This script lets you freely edit the weather of the region you are currently in with this button:<br>
-
-![image](https://i.imgur.com/2cBIfyH.png)
-
-In addition it will also prevent the weather from changing and will remember you choice when reloading the game
-
-<hr>
-
-<b>More to be added soon.</b>
+Pokéclicker and its contributors maintain the game itself. Attribution links are provided for credit, while script installation and issue-report links point to this fork.

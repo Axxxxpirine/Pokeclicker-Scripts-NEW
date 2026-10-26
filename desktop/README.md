@@ -1,6 +1,6 @@
 # Pokéclicker Scripts Desktop
 
-A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.0** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
+A modified Pokéclicker desktop client that manages userscripts. This fork's **Scripts Desktop 2.2.1** includes the scripts from the same checkout as the archive. It checks **Axxxxpirine/Pokeclicker-Scripts-NEW**, not the upstream scripts repository, for script updates.
 
 ## Install or update
 
@@ -8,7 +8,7 @@ A modified Pokéclicker desktop client that manages userscripts. This fork's **S
 2. Close the desktop client, locate its `resources` folder (inside the application bundle on macOS), and replace `app.asar` with the file from this folder and branch.
 3. Start the client and open Settings → Scripts. Repository scripts start disabled unless you already selected them. Enable the scripts you want, then restart or reload the window.
 
-This archive contains the modified client JavaScript, not the Electron executable. Its base package version is 1.2.0. L6 was exercised on macOS with **Electron 21.3.1 and game 0.10.26**, using an isolated profile and copied save. Other Electron/client versions and Windows/Linux require their own validation. Obtain the official client separately from [Pokéclicker Desktop releases](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
+This archive contains the modified client JavaScript, not the Electron executable. Its base package version is 1.2.0. The loader was exercised on macOS with **Electron 21.3.1 and game 0.10.26**, using an isolated profile and copied save. Other Electron/client versions and Windows/Linux require their own validation. Obtain the official client separately from [Pokéclicker Desktop releases](https://github.com/RedSparr0w/Pokeclicker-desktop/releases/).
 
 ## Versions and updates
 
@@ -38,7 +38,7 @@ Put additional `.js` files in `custom-scripts`. They default to enabled. Their e
 
 Each window loads the scripts once per document. A failing script does not stop the following scripts or prevent the game from starting. A reload invalidates pending injection into the old document. Shared cache updates are serialized across windows. The client's native save-slot behavior is unchanged: use different saves in concurrent windows to avoid competing game saves.
 
-An initialization error inside a userscript can still be reported by that script after the loader finishes. The loader does not fix the known Catch Filter, Karma or Debug Cheats compatibility defects recorded in L2. Disabling a script and reloading is preferable to deleting application data or running Script Fixer Upper indiscriminately.
+An initialization error inside a userscript can still be reported by that script after the loader finishes. Loader checks do not establish that every script feature works in every game context. Disabling a script and reloading is preferable to deleting application data or running Script Fixer Upper indiscriminately.
 
 ## Build and checks
 
@@ -52,4 +52,10 @@ npm run build:desktop
 
 The build copies `desktop/app_src` into `.local/desktop-build`, adds the current root/custom userscripts and packages `desktop/app.asar` with the pinned `@electron/asar` dependency. Do not edit the generated archive directly. The checked-in archive must be rebuilt after changing desktop sources or bundled scripts.
 
-Automated tests cover malformed settings, offline fallback, failed updates, disabled updates, downgrades, script isolation, stale navigation, update-request timing, custom-toggle migration and remembered exports. The L6 Electron smoke test additionally exercised the packaged archive, a copied 0.10.26 save, reload, a secondary window, an accented data path and a native export. It does not certify every script or every region of the game.
+Automated tests cover malformed settings, offline fallback, failed updates, disabled updates, downgrades, script isolation, stale navigation, update-request timing, custom-toggle migration and remembered exports. The Electron smoke test additionally exercised the packaged archive, a copied 0.10.26 save, reload, a secondary window, an accented data path and a native export. It does not certify every script or every region of the game.
+
+## Licenses and provenance
+
+The userscripts retain their original credits and GPL-3.0 notices. The build includes the repository's full `LICENSE` as `LICENSE-GPL-3.0.txt` in `app.asar`, alongside [component notices](app_src/NOTICES.md). The upstream desktop package declares ISC and credits RedSparr0w. Dependencies retain their individual license files.
+
+Fork modifications and packaging were updated on 2026-10-27 by Axxxxpirine. Editable desktop sources are in [app_src](app_src), userscripts are in the repository root and `custom`, and [the build script](../scripts/build-desktop.cjs) reproduces the archive. Use sources from the same repository revision as the archive.

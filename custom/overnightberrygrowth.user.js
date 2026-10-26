@@ -5,7 +5,7 @@
 // @description   Allows berres to grow while the game is closed.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.1.5
+// @version       1.1.6
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -298,6 +298,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('overnightberrygrowth') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('overnightberrygrowth') ?? (localStorage.getItem('overnightberrygrowth') === 'true'))) {
     loadEpheniaScript('overnightberrygrowth', initOvernightBerrySettings, initOfflineGrowth);
 }

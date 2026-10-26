@@ -5,7 +5,7 @@
 // @description   Allows you to adjust and modify the shiny rates of everything specifically, as well as set a global shiny rate.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.5.4
+// @version       1.5.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -480,6 +480,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('syntheticshinysynapse') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('syntheticshinysynapse') ?? (localStorage.getItem('syntheticshinysynapse') === 'true'))) {
     loadEpheniaScript('syntheticshinysynapse', initShinySynapse);
 }

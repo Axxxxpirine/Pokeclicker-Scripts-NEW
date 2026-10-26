@@ -5,7 +5,7 @@
 // @description   An experimental catch filter that aims to help you have much better control and will completely change how you capture Pokémon.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.5
+// @version       1.9.6
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -584,6 +584,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('catchfilterfantasia') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('catchfilterfantasia') ?? (localStorage.getItem('catchfilterfantasia') === 'true'))) {
     loadEpheniaScript('catchfilterfantasia', initCatchFilter);
 }

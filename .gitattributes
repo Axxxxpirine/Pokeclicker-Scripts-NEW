@@ -1,3 +1,4 @@
+* text=auto eol=lf
 # Preserve vendored npm package bytes, including upstream line endings.
 desktop/app_src/node_modules/** -text -whitespace linguist-vendored
 desktop/app.asar binary

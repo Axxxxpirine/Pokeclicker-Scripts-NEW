@@ -4,7 +4,7 @@
 // @author        Axxxxpirine
 // @description   Optional farm speed, hatch EV bonuses and 2x route party attack cadence. Every effect starts OFF on reload. Earned progression persists in your save.
 // @license       GPL-3.0 License
-// @version       1.0.0
+// @version       1.0.1
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/custom/optionalaccelerators.user.js
@@ -17,7 +17,7 @@
 
 (() => {
     'use strict';
-    if (typeof App === 'undefined' || (App.isUsingClient && localStorage.getItem('optionalaccelerators') !== 'true')) return;
+    if (typeof App === 'undefined' || (App.isUsingClient && !(window.DesktopScriptHandler?.isEpheniaScriptEnabled('optionalaccelerators') ?? (localStorage.getItem('optionalaccelerators') === 'true')))) return;
     const root = App.isUsingClient ? window : unsafeWindow;
 
     function initOptionalAccelerators() {

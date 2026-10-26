@@ -6,40 +6,49 @@ const vm = require('vm');
 const { randomUUID, createHash } = require('crypto');
 const semver = require('semver');
 const REPOSITORY = 'https://api.github.com/repos/Axxxxpirine/Pokeclicker-Scripts-NEW/contents/';
+const RAW_REPOSITORY = 'https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/';
 const updates = new Map();
 
 // A wall-clock deadline also bounds DNS, stalled bodies and slow trickles.
 function fetchText(url, timeout = 10000) {
     return new Promise((resolve, reject) => {
         let request;
-        const timer = setTimeout(() => request.destroy(new Error('Download deadline exceeded')), timeout);
+        const timer = setTimeout(() => request?.destroy(new Error('Download deadline exceeded')), timeout);
         const finish = (error, body) => {
             clearTimeout(timer);
             if (error) reject(error); else resolve(body);
         };
-        request = https.get(url, {headers: {'User-Agent': 'Pokeclicker-Scripts-Desktop', Accept: 'application/vnd.github+json'}}, response => {
-            if (response.statusCode !== 200) {
-                response.resume();
-                finish(new Error(`HTTP ${response.statusCode}`));
-                return;
-            }
-            let body = '';
-            response.setEncoding('utf8');
-            response.on('data', chunk => {
-                body += chunk;
-                if (body.length > 4 * 1024 * 1024) request.destroy(new Error('Script response too large'));
+        try {
+            request = https.get(url, {headers: {'User-Agent': 'Pokeclicker-Scripts-Desktop', Accept: 'application/vnd.github+json'}}, response => {
+                if (response.statusCode !== 200) {
+                    finish(new Error(`HTTP ${response.statusCode}`));
+                    response.destroy();
+                    return;
+                }
+                const chunks = [];
+                let size = 0;
+                response.on('data', chunk => {
+                    size += chunk.length;
+                    if (size > 4 * 1024 * 1024) {
+                        const error = new Error('Script response too large');
+                        finish(error);
+                        request.destroy(error);
+                        return;
+                    }
+                    chunks.push(chunk);
+                });
+                response.on('end', () => finish(null, Buffer.concat(chunks).toString('utf8')));
+                response.on('error', finish);
+                response.on('aborted', () => finish(new Error('Incomplete response')));
             });
-            response.on('end', () => finish(null, body));
-            response.on('error', finish);
-            response.on('aborted', () => finish(new Error('Incomplete response')));
-        });
-        request.on('error', finish);
+            request.on('error', finish);
+        } catch (error) { finish(error); }
     });
 }
 function atomicWrite(file, body) {
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
-        fs.writeFileSync(temporary, body, 'utf8');
+        fs.writeFileSync(temporary, body, {encoding:'utf8', flag:'wx'});
         fs.renameSync(temporary, file);
     } finally {
         if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
@@ -53,17 +62,26 @@ function validateScript(body) {
     new vm.Script(`(function(){\n${body}\n})();`);
 }
 function listScripts(directory) {
+    if (!fs.lstatSync(directory).isDirectory()) throw new Error('Invalid scripts directory or symlink');
     return fs.readdirSync(directory, {withFileTypes:true})
         .filter(entry => entry.isFile() && entry.name.endsWith('.js') && entry.name !== 'desktopupdatechecker.js')
         .map(entry => entry.name).sort();
 }
+function readCachedFile(file) {
+    let stat;
+    try { stat = fs.lstatSync(file); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+    if (!stat.isFile()) throw new Error('Invalid cached file or symlink');
+    return fs.readFileSync(file, 'utf8');
+}
 async function performUpdate({dataDir, bundledDir, autoUpdate, fetchText: request = fetchText}) {
     const directory = path.join(dataDir, 'scripts');
     fs.mkdirSync(directory, {recursive:true});
+    if (!fs.lstatSync(directory).isDirectory()) throw new Error('Invalid scripts directory or symlink');
     const checksumFile = path.join(directory, 'fileVersions.json');
     let checksums = {};
     try {
-        const parsed = JSON.parse(fs.readFileSync(checksumFile, 'utf8'));
+        const parsed = JSON.parse(readCachedFile(checksumFile));
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) checksums = parsed;
     } catch (_) { /* A missing checksum never authorizes replacing a local file. */ }
     const result = {offline:false, failed:0, available:0, updated:0};
@@ -75,7 +93,7 @@ async function performUpdate({dataDir, bundledDir, autoUpdate, fetchText: reques
                 const file = path.join(directory, name);
                 const body = fs.readFileSync(path.join(bundledDir, name), 'utf8');
                 validateScript(body);
-                const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+                const old = readCachedFile(file);
                 const oldVersion = old && semver.valid(scriptVersion(old));
                 const newVersion = semver.valid(scriptVersion(body));
                 if (old === null || (autoUpdate && oldVersion && newVersion && semver.gt(newVersion, oldVersion))) {
@@ -89,17 +107,22 @@ async function performUpdate({dataDir, bundledDir, autoUpdate, fetchText: reques
     let files;
     try {
         const listings = await Promise.all([request(REPOSITORY), request(REPOSITORY+'custom')]);
-        files = listings.flatMap(body => {
+        files = listings.flatMap((body, index) => {
             const entries = JSON.parse(body);
             if (!Array.isArray(entries)) throw new Error('Invalid repository listing');
-            return entries.filter(entry => (entry.name?.endsWith('.user.js') || entry.name === 'desktopupdatechecker.js')).map(entry => {
-                if (path.basename(entry.name) !== entry.name || entry.name.includes('\\') || !/^https:\/\/raw\.githubusercontent\.com\//.test(entry.download_url)) {
+            const folder = index === 0 ? '' : 'custom/';
+            return entries.filter(entry => typeof entry?.name === 'string' && (entry.name.endsWith('.user.js') || entry.name === 'desktopupdatechecker.js')).map(entry => {
+                const safeName = /^(?:[a-z0-9_-]{1,120}\.user\.js|desktopupdatechecker\.js)$/i.test(entry.name)
+                    && !/^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])\./i.test(entry.name);
+                const source = RAW_REPOSITORY + folder + entry.name;
+                if (!safeName || entry.type !== 'file' || entry.path !== folder + entry.name
+                    || entry.download_url !== source || !/^[a-f0-9]{40}$/.test(entry.sha)) {
                     throw new Error('Invalid script path or source');
                 }
-                return entry;
+                return {name:entry.name, download_url:source, sha:entry.sha};
             });
         });
-        if (new Set(files.map(file => file.name)).size !== files.length) throw new Error('Duplicate script names');
+        if (files.length > 256 || new Set(files.map(file => file.name.toLowerCase())).size !== files.length) throw new Error('Too many or duplicate script names');
     } catch (_) {
         return {...result, offline:true};
     }
@@ -110,13 +133,17 @@ async function performUpdate({dataDir, bundledDir, autoUpdate, fetchText: reques
             const entry = files[next++], file = path.join(directory, entry.name);
             try {
                 const body = await request(entry.download_url);
+                // Git's blob ID binds the listing to these exact UTF-8 bytes.
+                // This detects corruption and branch changes, not a compromised maintainer.
+                const hash = createHash('sha1').update(`blob ${Buffer.byteLength(body)}\0`).update(body).digest('hex');
+                if (hash !== entry.sha) throw new Error('Script content does not match repository blob');
                 if (entry.name === 'desktopupdatechecker.js') {
                     const version = body.match(/const LATEST_VERSION = ['"]([^'"]+)['"]/);
                     if (semver.valid(version?.[1])) result.latestDesktopVersion = version[1];
                     continue;
                 }
                 validateScript(body);
-                const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+                const old = readCachedFile(file);
                 const oldVersion = old && semver.valid(scriptVersion(old));
                 const newVersion = semver.valid(scriptVersion(body));
                 if (oldVersion && (!newVersion || semver.lt(newVersion, oldVersion))) continue;
@@ -201,7 +228,8 @@ function attachScriptsWindow(gameWindow, options) {
                     try {
                         const enabled = await run(`DesktopScriptHandler.register${custom?'User':'Ephenia'}Script(${JSON.stringify(name)}); return DesktopScriptHandler.is${custom?'User':'Ephenia'}ScriptEnabled(${JSON.stringify(name)});`);
                         if (enabled) {
-                            const body = fs.readFileSync(path.join(directory,file),'utf8');
+                            const body = readCachedFile(path.join(directory,file));
+                            if (body === null) throw new Error('Script file disappeared');
                             await run(`(function(){\n${body}\n})();`);
                         }
                     } catch (error) { errors.push(file); report(error); }

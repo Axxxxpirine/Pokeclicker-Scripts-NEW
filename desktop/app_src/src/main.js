@@ -2,11 +2,17 @@
 
 /* eslint-disable no-console */
 
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, shell } = require("electron");
+const {MIN_ELECTRON_VERSION, WEB_PREFERENCES, isSupportedRuntime, discordActivity, protectWindow, protectSession, protectGameIndex} = require('./desktop-security');
+if (!isSupportedRuntime(process.versions.electron)) {
+  app.whenReady().then(() => {
+    dialog.showErrorBox('Unsupported desktop runtime', `This security release requires Electron ${MIN_ELECTRON_VERSION} or later. Installed: ${process.versions.electron || 'unknown'}. Replacing app.asar cannot update Electron. Use the maintained runtime instructions in this fork or play in your browser.`);
+    app.exit(1);
+  });
+  return;
+}
 const DiscordRPC = require("discord-rpc");
-const https = require("https");
 const fs = require("fs");
-const Zip = require("adm-zip");
 const electron = require("electron");
 // app.getVersion() comes from the replacement archive, not the installed client.
 const modifiedPackageVersion = app.getVersion();
@@ -19,8 +25,9 @@ const path = require("path");
 const ini = require("ini");
 const {attachScriptsWindow, atomicWrite} = require('./desktop-scripts');
 const {normalizeSettings, rememberDownloads} = require('./desktop-settings');
+const {fetchGameVersion, installGameUpdate} = require('./desktop-game-updater');
 const settingsFile = path.join(dataDir, "settings.ini");
-const POKECLICKER_SCRIPTS_DESKTOP_VERSION = '2.2.2';
+const POKECLICKER_SCRIPTS_DESKTOP_VERSION = '3.0.0';
 
 console.info("Data directory:", dataDir);
 
@@ -62,10 +69,7 @@ function createWindow() {
     width: +config.Sizing.Width,    // DESKTOP SCRIPTS ADDITION
     height: +config.Sizing.Height,  // DESKTOP SCRIPTS ADDITION
     resizable: true,                // DESKTOP SCRIPTS ADDITION
-    webPreferences: {
-      webSecurity: false,
-      backgroundThrottling: false,
-    },
+    webPreferences: {...WEB_PREFERENCES},
   });
 
   mainWindow.webContents.on("did-finish-load", () => {
@@ -83,6 +87,12 @@ function createWindow() {
 
   // Check if we've already downloaded the data, otherwise load our loading screen
   if (fs.existsSync(`${dataDir}/pokeclicker-master/docs/index.html`)) {
+    try { protectGameIndex(path.join(dataDir, 'pokeclicker-master/docs/index.html'), dataDir); }
+    catch (error) {
+      dialog.showErrorBox('Cannot safely open the cached game', `The cached game could not be validated: ${error.message}. No game was loaded. Repair or replace the cached game files before restarting. Save data has not been changed.`);
+      app.quit();
+      return;
+    }
     mainWindow.loadFile(path.join(dataDir, 'pokeclicker-master/docs/index.html'));
   } else {
     mainWindow.loadFile(path.join(__dirname, 'pokeclicker-master/docs/index.html'));
@@ -108,10 +118,7 @@ function createSecondaryWindow() {
     width: +config.Sizing.Width,    // DESKTOP SCRIPTS ADDITION
     height: +config.Sizing.Height,   // DESKTOP SCRIPTS ADDITION
     resizable: true,                // DESKTOP SCRIPTS ADDITION
-    webPreferences: {
-      webSecurity: false,
-      backgroundThrottling: false,
-    },
+    webPreferences: {...WEB_PREFERENCES},
   });
 
   newWindow.setMenuBarVisibility(false);
@@ -120,6 +127,12 @@ function createSecondaryWindow() {
 
   // Check if we've already downloaded the data, otherwise load our loading screen
   if (fs.existsSync(`${dataDir}/pokeclicker-master/docs/index.html`)) {
+    try { protectGameIndex(path.join(dataDir, 'pokeclicker-master/docs/index.html'), dataDir); }
+    catch (error) {
+      dialog.showErrorBox('Cannot safely open the cached game', `The cached game could not be validated: ${error.message}. No game was loaded in the alternate window. Repair or replace the cached game files before reopening it. Save data has not been changed.`);
+      newWindow.destroy();
+      return null;
+    }
     newWindow.loadFile(path.join(dataDir, 'pokeclicker-master/docs/index.html'));
   } else {
     newWindow.loadFile(path.join(__dirname, 'pokeclicker-master/docs/index.html'));
@@ -189,31 +202,11 @@ if (!isMainInstance) {
       console.warn("Something went wrong, could not gather discord RP data");
     }
 
-    if (!discordData.enabled) {
-      return rpc.clearActivity();
-    }
-
-    // You'll need to have image assets uploaded to
-    // https://discord.com/developers/applications/<application_id>/rich-presence/assets
-    const activity = {
-      instance: true,
-    };
-    activity.details =
-      discordData.line1?.length <= 1 ? "--" : discordData.line1.substr(0, 128);
-    activity.state =
-      discordData.line2?.length <= 1 ? "--" : discordData.line2.substr(0, 128);
-    if (discordData.startTimestamp)
-      activity.startTimestamp = discordData.startTimestamp;
-    if (discordData.largeImageKey)
-      activity.largeImageKey = discordData.largeImageKey;
-    if (discordData.largeImageKey && discordData.largeImageText)
-      activity.largeImageText = discordData.largeImageText.substr(0, 128);
-    if (discordData.smallImageKey)
-      activity.smallImageKey = discordData.smallImageKey;
-    if (discordData.smallImageKey && discordData.smallImageText)
-      activity.smallImageText = discordData.smallImageText.substr(0, 128);
-
-    rpc.setActivity(activity);
+    const activity = discordActivity(discordData);
+    try {
+      if (activity) await rpc.setActivity(activity);
+      else await rpc.clearActivity();
+    } catch (_) { console.warn('Discord activity unavailable.'); }
   }
 
   rpc.on("ready", () => {
@@ -236,144 +229,58 @@ if (!isMainInstance) {
     );
   };
 
-  const downloadUpdate = async (initial = false) => {
-    const zipFilePath = `${dataDir}/update.zip`;
-    const file = fs.createWriteStream(zipFilePath);
-    https
-      .get(
-        "https://codeload.github.com/pokeclicker/pokeclicker/zip/master",
-        async (res) => {
-          let cur = 0;
-          try {
-            if (!initial)
-              await mainWindow.webContents.executeJavaScript(
-                `Notifier.notify({ title: '[UPDATER] v${newVersion}', message: 'Downloading Files...<br/><span id="update-message-progress">Please Wait...</span>', timeout: 1e6 })`
-              );
-          } catch (e) {}
-
-          res.on("data", async (chunk) => {
-            cur += chunk.length;
-            try {
-              if (initial)
-                await mainWindow.webContents.executeJavaScript(
-                  `setStatus("Downloading Files...<br/>${(
-                    cur / 1048576
-                  ).toFixed(2)} mb")`
-                );
-              else
-                await mainWindow.webContents.executeJavaScript(
-                  `document.getElementById('update-message-progress').innerText = "${(
-                    cur / 1048576
-                  ).toFixed(2)} mb"`
-                );
-            } catch (e) {}
-          });
-
-          res.pipe(file).on("finish", async () => {
-            try {
-              if (initial)
-                await mainWindow.webContents.executeJavaScript(
-                  'setStatus("Files Downloaded!<br/>Extracting Files...")'
-                );
-              else
-                await mainWindow.webContents.executeJavaScript(
-                  `Notifier.notify({ title: '[UPDATER] v${newVersion}', message: 'Files Downloaded!<br/>Extracting Files...', timeout: 2e4 })`
-                );
-            } catch (e) {}
-
-            const zip = new Zip(zipFilePath);
-
-            const extracted = zip.extractEntryTo(
-              "pokeclicker-master/docs/",
-              `${dataDir}`,
-              true,
-              true
-            );
-
-            fs.unlinkSync(zipFilePath);
-
-            if (!extracted) {
-              return downloadUpdateFailed();
-            }
-
-            currentVersion = newVersion;
-            startUpdateCheckInterval();
-
-            // If this is the initial download, don't ask the user about refreshing the page
-            if (initial) {
-              mainWindow.loadFile(path.join(dataDir, 'pokeclicker-master/docs/index.html'));
-              return;
-            }
-
-            const userResponse = dialog.showMessageBoxSync(mainWindow, {
-              title: "PokeClicker - Update success!",
-              message: `Successfully updated,\nwould you like to reload the page now?`,
-              icon: `${__dirname}/icon.png`,
-              buttons: ["Yes", "No"],
-              noLink: true,
-            });
-
-            if (userResponse == 0) {
-              mainWindow.loadFile(path.join(dataDir, 'pokeclicker-master/docs/index.html'));
-            }
-          });
-        }
-      )
-      .on("error", (e) => {
-        return downloadUpdateFailed();
-      });
+  let downloading = false;
+  const showProgress = async (initial, stage, data = {}) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const text = stage === 'download'
+      ? `Downloading game files: ${(Number(data.received || 0) / 1048576).toFixed(2)} MB`
+      : stage === 'validate' ? 'Validating game files...'
+      : stage === 'install' ? 'Installing game files...' : 'Game files ready.';
+    try {
+      if (initial) await mainWindow.webContents.executeJavaScript(`window.setStatus?.(${JSON.stringify(text)})`);
+      else await mainWindow.webContents.executeJavaScript(`(() => { const el = document.getElementById('update-message-progress'); if (el) el.textContent = ${JSON.stringify(text)}; })()`);
+    } catch (_) { /* A closing or reloading window must not abort a safe update. */ }
   };
-
-  const downloadUpdateFailed = () => {
-    // If client exe updating, return
-    if (windowClosed) return;
-
-    const userResponse = dialog.showMessageBoxSync(mainWindow, {
-      type: "error",
-      title: "PokeClicker - Update failed!",
-      message: `Failed to download or extract the update,\nWould you like to retry?`,
-      icon: `${__dirname}/icon.png`,
-      buttons: ["Yes", "No"],
-      noLink: true,
-    });
-
-    if (userResponse == 0) {
-      downloadUpdate();
+  const downloadUpdate = async (initial = false) => {
+    if (downloading) return;
+    downloading = true;
+    let failure;
+    try {
+      if (!initial && mainWindow && !mainWindow.isDestroyed()) {
+        const notice = {title:'Game update',message:'Downloading game files...<br/><span id="update-message-progress">Please wait...</span>',timeout:1e6};
+        await mainWindow.webContents.executeJavaScript(`Notifier.notify(${JSON.stringify(notice)})`).catch(()=>{});
+      }
+      currentVersion = await installGameUpdate({dataDir,onProgress:(stage,data)=>showProgress(initial,stage,data)});
+      protectGameIndex(path.join(dataDir,'pokeclicker-master/docs/index.html'), dataDir);
+      startUpdateCheckInterval();
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (initial || dialog.showMessageBoxSync(mainWindow, {
+        title:'Pokéclicker - Update ready',message:'The validated game update is ready. Reload now?',
+        buttons:['Reload','Later'],defaultId:0,cancelId:1,noLink:true,
+      }) === 0) await mainWindow.loadFile(path.join(dataDir,'pokeclicker-master/docs/index.html'));
+    } catch (error) {
+      failure = error;
+      console.warn('Game update failed:',error.message);
+    } finally { downloading = false; }
+    if (failure && !windowClosed && mainWindow && !mainWindow.isDestroyed()) {
+      const retry = dialog.showMessageBoxSync(mainWindow, {
+        type:'error',title:'Pokéclicker - Update failed',
+        message:'The game update could not finish. No save data was changed. The previous game is kept or retained as a recovery backup. Retry?',
+        buttons:['Retry','Cancel'],defaultId:1,cancelId:1,noLink:true,
+      });
+      if (retry === 0) void downloadUpdate(initial);
     }
   };
-
-  const checkForUpdates = () => {
-    const request = https
-      .get(
-        "https://raw.githubusercontent.com/pokeclicker/pokeclicker/master/package.json",
-        (res) => {
-          let body = "";
-
-          res.on("data", (d) => {
-            body += d;
-          });
-
-          res.on("end", () => {
-            let data = { version: "0.0.0" };
-            try {
-              data = JSON.parse(body);
-              newVersion = data.version;
-              const newVersionAvailable = isNewerVersion(data.version);
-
-              if (newVersionAvailable) {
-                // Stop checking for updates
-                clearInterval(checkForUpdatesInterval);
-                // Check if user want's to update now
-                shouldUpdateNowCheck();
-              }
-            } catch (e) {}
-          });
-        }
-      )
-      .on("error", (e) => {
-        // TODO: Update download failed
-        console.warn("Couldn't check for updated version, might be offline..");
-      });
+  const checkForUpdates = async () => {
+    try {
+      const version = await fetchGameVersion();
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      newVersion = version;
+      if (isNewerVersion(version)) {
+        clearInterval(checkForUpdatesInterval);
+        shouldUpdateNowCheck();
+      }
+    } catch (_) { console.warn('Game update check unavailable. Keeping cached game.'); }
   };
 
   const shouldUpdateNowCheck = () => {
@@ -401,6 +308,7 @@ if (!isMainInstance) {
 
   const startUpdateCheckInterval = (run_now = false) => {
     // Check for updates every hour
+    clearInterval(checkForUpdatesInterval);
     checkForUpdatesInterval = setInterval(checkForUpdates, 36e5);
     if (run_now) checkForUpdates();
   };
@@ -431,6 +339,9 @@ if (!isMainInstance) {
 
 /* Scripts and settings are scoped to each document in each game window. */
 function injectDesktopScriptsModifications(gameWindow) {
+  const indexFiles = [path.join(dataDir,'pokeclicker-master/docs/index.html'),path.join(__dirname,'pokeclicker-master/docs/index.html')];
+  protectWindow(gameWindow,{indexFiles,openExternal:url=>shell.openExternal(url)});
+  protectSession(gameWindow.webContents.session,indexFiles.map(file=>path.dirname(file)));
   attachScriptsWindow(gameWindow, {
     dataDir,
     bundledDir: path.join(__dirname, '../bundled-scripts'),

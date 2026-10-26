@@ -5,7 +5,7 @@
 // @description   Adds in toggable options to have seasonal events infinitely run. Events can also run simultaneously with one another. Includes a custom event as well.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.3.4
+// @version       1.3.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -318,6 +318,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('infiniteseasonalevents') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('infiniteseasonalevents') ?? (localStorage.getItem('infiniteseasonalevents') === 'true'))) {
     loadEpheniaScript('infiniteseasonalevents', initEvents);
 }

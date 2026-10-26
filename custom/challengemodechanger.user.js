@@ -5,7 +5,7 @@
 // @description   Lets you enable/disable any of the Challenges at any given point in time. This is compatiable with any save and will work on pre-existing saves. It's best to backup your save before using this.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.2.4
+// @version       1.2.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -123,6 +123,6 @@ function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     }
 }
 
-if (!App.isUsingClient || localStorage.getItem('challengemodechanger') === 'true') {
+if (!App.isUsingClient || (window.DesktopScriptHandler?.isEpheniaScriptEnabled('challengemodechanger') ?? (localStorage.getItem('challengemodechanger') === 'true'))) {
     loadEpheniaScript('challengemodechanger', initChallenger);
 }

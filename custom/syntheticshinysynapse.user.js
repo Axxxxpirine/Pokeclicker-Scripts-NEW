@@ -5,7 +5,7 @@
 // @description   Allows you to adjust and modify the shiny rates of everything specifically, as well as set a global shiny rate.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.5.3
+// @version       1.5.4
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -17,6 +17,9 @@
 // @grant         unsafeWindow
 // @run-at        document-idle
 // ==/UserScript==
+// Modified by Axxxxpirine, 2026-10-27: fork maintenance and installation/update URLs.
+// Includes this fork's compatibility and feature changes where applicable.
+// Original authorship and GPL-3.0 licensing are retained.
 
 // Keep these seven categories in their legacy storage order. Several native rates
 // are equal, and newer constants must not shift the saved array indices.

@@ -5,7 +5,7 @@
 // @description   Adds additional settings for hiding some visual things to help out with performance. Also, includes various features that help with ease of accessibility.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.0
+// @version       3.0.1
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -17,6 +17,9 @@
 // @grant         unsafeWindow
 // @run-at        document-idle
 // ==/UserScript==
+// Modified by Axxxxpirine, 2026-10-27: fork maintenance and installation/update URLs.
+// Includes this fork's compatibility and feature changes where applicable.
+// Original authorship and GPL-3.0 licensing are retained.
 
 // TODO disable party attack number + tooltip
 

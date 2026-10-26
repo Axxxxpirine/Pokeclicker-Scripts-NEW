@@ -8,7 +8,7 @@
 // @description   Adds in toggable options to move/catch pokemons/pick up items and have fast animations on both safari zones
 // @copyright     https://github.com/Kanzen01
 // @license       GPL-3.0 License
-// @version       1.2.5
+// @version       1.3.0
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -70,6 +70,7 @@ function initAutoSafari() {
     encounters: 1,
     gettingItems: 2,
     seekingShiny: 3,
+    seekingUncaught: 4,
   };
 
   const optimalBugContestByHighestRegion = GameHelper.enumNumbers(GameConstants.Region)
@@ -207,6 +208,18 @@ function initAutoSafari() {
     }
     // Seek encounters
     else {
+      // Prefer a visible uncaught Pokemon on land or water over random encounters.
+      // Replan each tick so moved, despawned or newly caught targets cannot leave a stale path.
+      if (autoSafariSeekUncaught) {
+        const [coords, path] = findShortestPathToUncaught();
+        if (path.length) {
+          scriptState = SCRIPT_STATES.seekingUncaught;
+          targetCoords = coords;
+          cachedPath = path;
+          moveCharacter(cachedPath);
+          return;
+        }
+      }
       if (scriptState !== SCRIPT_STATES.encounters || !cachedPath?.length) {
         scriptState = SCRIPT_STATES.encounters;
         [targetCoords, cachedPath] = findShortestPathToEncounters();
@@ -235,6 +248,14 @@ function initAutoSafari() {
   function findShortestPathToItems() {
     const itemLocations = new Set(Safari.itemGrid().map(({ x, y }) => `${y}-${x}`));
     return findShortestPathToTiles((row, col) => (itemLocations.has(`${row}-${col}`)));
+  }
+
+  function findShortestPathToUncaught() {
+    const locations = new Set(Safari.pokemonGrid()
+      .filter(p => !App.game.party.alreadyCaughtPokemon(p.id))
+      .map(({ x, y }) => `${y}-${x}`));
+    // The path search skips unreachable targets and selects the closest reachable one.
+    return locations.size ? findShortestPathToTiles((row, col) => locations.has(`${row}-${col}`)) : [[], []];
   }
 
   function findShortestPathToEncounters() {
@@ -370,10 +391,11 @@ function initAutoSafari() {
 
   function fightSafariPokemon() {
     // TODO skip ticks proportional to animation speed
-    const forceRunAway = !SafariBattle.enemy.shiny && (scriptState !== SCRIPT_STATES.encounters
-        || (Safari.balls() == 1 && autoSafariPickItemsState && Safari.itemGrid().length > 0 && !forceSkipItems));
     const isPriority = (autoSafariSeekUncaught && !App.game.party.alreadyCaughtPokemon(SafariBattle.enemy.id))
         || (autoSafariSeekContagious && App.game.party.getPokemon(SafariBattle.enemy.id)?.pokerus === GameConstants.Pokerus.Contagious);
+    const forceRunAway = !SafariBattle.enemy.shiny && ((scriptState !== SCRIPT_STATES.encounters
+        && !(scriptState === SCRIPT_STATES.seekingUncaught && isPriority))
+        || (Safari.balls() == 1 && autoSafariPickItemsState && Safari.itemGrid().length > 0 && !forceSkipItems));
     let threwBall = false;
 
     if (SafariBattle.busy()) {

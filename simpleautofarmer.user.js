@@ -2,10 +2,10 @@
 // @name          [Pokeclicker] Simple Auto Farmer
 // @namespace     Pokeclicker Scripts
 // @author        Ephenia / Akwawa / perkasthor / davide-lugli (update 1.6) / Optimatum
-// @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot.
+// @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture and a persistent stop timer share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.7.4
+// @version       1.8.0
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -18,6 +18,8 @@
 // @run-at        document-idle
 // ==/UserScript==//
 // Fork compatibility update, 2026-10-26: fixes for Pokéclicker 0.10.26.
+// Wanderer capture inspired by CatapultingWizard (upstream PR #433).
+// Farm stop timer inspired by EasyGoinGaming (upstream PR #416), independently adapted for persistence.
 
 
 function initAutoFarm() {
@@ -27,25 +29,32 @@ function initAutoFarm() {
     var harvestState;
     var replantState;
     var mulchState;
+    var catchState;
+    var stopAt = JSON.parse(localStorage.getItem('autoFarmStopAt'));
+    if (!Number.isSafeInteger(stopAt) || stopAt < 0) {
+        stopAt = 0;
+        localStorage.setItem('autoFarmStopAt', 0);
+    }
 
     plantState = JSON.parse(localStorage.getItem('autoPlantState'));
     harvestState = JSON.parse(localStorage.getItem('autoHarvestState'));
     replantState = JSON.parse(localStorage.getItem('autoReplantState'));
     mulchState = JSON.parse(localStorage.getItem('autoMulchState'));
+    catchState = JSON.parse(localStorage.getItem('autoCatchState'));
 
     let plantSelected = JSON.parse(localStorage.getItem('autoPlantSelected'));
     FarmController.selectedBerry(plantSelected);
     FarmController.navigateIndex(Math.floor(plantSelected / FarmController.BERRIES_PER_PAGE));
 
     createMenu();
-    if (plantState || replantState || harvestState || mulchState) {
-        toggleFarmLoop();
-    }
+    checkFarmDeadline();
+    toggleFarmLoop();
 
     function createMenu() {
         var elemAF = document.createElement("div");
         var divMenu1 = document.createElement("div");
         var divMenu2 = document.createElement("div");
+        var divMenu3 = document.createElement("div");
         const shovelList = document.getElementById('shovelList');
 
         divMenu1.className = "row justify-content-center py-0";
@@ -53,9 +62,11 @@ function initAutoFarm() {
 
         elemAF.appendChild(divMenu1);
         elemAF.appendChild(divMenu2);
+        divMenu3.className = divMenu2.className;
+        elemAF.appendChild(divMenu3);
         shovelList.before(elemAF);
 
-        const createButton = (name, state, func, rl, top) => {
+        const createButton = (name, state, func, rl, row) => {
             var buttonDiv = document.createElement('div');
             buttonDiv.className = `col-6 p${rl}-0`;
 
@@ -64,25 +75,52 @@ function initAutoFarm() {
             button.className = 'btn btn-block btn-' + (state ? 'success' : 'danger');
             button.style.height = '50px';
             button.style.fontSize = '9pt';
-            button.textContent = `Auto ${name[0].toUpperCase() + name.slice(1)}\n[${plantState ? 'ON' : 'OFF'}]`;
+            button.textContent = `Auto ${name[0].toUpperCase() + name.slice(1)}\n[${state ? 'ON' : 'OFF'}]`;
             button.onclick = function() { func(); };
 
             buttonDiv.appendChild(button);
-            if (top) {
-                divMenu1.appendChild(buttonDiv);
-            } else {
-                divMenu2.appendChild(buttonDiv);
-            }
+            row.appendChild(buttonDiv);
         }
 
-        createButton('plant', plantState, autoPlantToggle, 'r', true);
-        createButton('harvest', harvestState, autoHarvestToggle, 'l', true);
-        createButton('replant', replantState, autoReplantToggle, 'r', false);
-        createButton('mulch', mulchState, autoMulchToggle, 'l', false);
+        createButton('plant', plantState, autoPlantToggle, 'r', divMenu1);
+        createButton('harvest', harvestState, autoHarvestToggle, 'l', divMenu1);
+        createButton('replant', replantState, autoReplantToggle, 'r', divMenu2);
+        createButton('mulch', mulchState, autoMulchToggle, 'l', divMenu2);
+        createButton('catch', catchState, autoCatchToggle, 'r', divMenu3);
+        const timerControls = document.createElement('div');
+        timerControls.className = 'd-flex flex-wrap align-items-center py-2';
+        timerControls.style.gap = '6px';
+        timerControls.innerHTML = `<label for="auto-farm-minutes" class="mb-0">Stop farm after (minutes)</label>
+            <input id="auto-farm-minutes" type="number" min="1" max="10080" step="1" class="form-control form-control-sm" style="width:90px">
+            <button id="auto-farm-timer-start" type="button" class="btn btn-sm btn-primary">Start timer</button>
+            <button id="auto-farm-timer-cancel" type="button" class="btn btn-sm btn-secondary">Cancel timer</button>
+            <span id="auto-farm-timer-status" role="status"></span>`;
+        elemAF.appendChild(timerControls);
+        const minutesInput = document.getElementById('auto-farm-minutes');
+        const savedMinutes = JSON.parse(localStorage.getItem('autoFarmTimerMinutes'));
+        minutesInput.value = Number.isInteger(savedMinutes) && savedMinutes >= 1 && savedMinutes <= 10080 ? savedMinutes : 60;
+        document.getElementById('auto-farm-timer-start').onclick = () => {
+            const minutes = Number(minutesInput.value);
+            if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+                document.getElementById('auto-farm-timer-status').textContent = 'Enter 1–10080 whole minutes. Existing timer unchanged.';
+                return;
+            }
+            stopAt = Date.now() + minutes * 60000;
+            localStorage.setItem('autoFarmStopAt', stopAt);
+            localStorage.setItem('autoFarmTimerMinutes', minutes);
+            checkFarmDeadline();
+            toggleFarmLoop();
+        };
+        document.getElementById('auto-farm-timer-cancel').onclick = () => {
+            stopAt = 0;
+            localStorage.setItem('autoFarmStopAt', 0);
+            checkFarmDeadline();
+            toggleFarmLoop();
+        };
     }
 
     function toggleFarmLoop() {
-        if (plantState || replantState || harvestState || mulchState) {
+        if (plantState || replantState || harvestState || mulchState || catchState || stopAt) {
             if (!autoFarmLoop) {
                 autoFarmLoop = setInterval(autoFarmTick, 1000);
             }
@@ -91,7 +129,44 @@ function initAutoFarm() {
         }
     }
 
+    function checkFarmDeadline() {
+        const status = document.getElementById('auto-farm-timer-status');
+        if (stopAt && Date.now() >= stopAt) {
+            plantState = harvestState = replantState = mulchState = catchState = false;
+            stopAt = 0;
+            localStorage.setItem('autoFarmStopAt', 0);
+            for (const name of ['plant', 'harvest', 'replant', 'mulch', 'catch']) {
+                localStorage.setItem(`auto${name[0].toUpperCase() + name.slice(1)}State`, false);
+                const button = document.getElementById(`auto-${name}-toggle`);
+                button.textContent = `Auto ${name[0].toUpperCase() + name.slice(1)}\n[OFF]`;
+                button.classList.replace('btn-success', 'btn-danger');
+            }
+            toggleFarmLoop();
+            status.textContent = 'Timer expired. All farm modes OFF.';
+            return true;
+        }
+        const seconds = Math.max(0, Math.ceil((stopAt - Date.now()) / 1000));
+        status.textContent = stopAt ? `Time left: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Timer OFF';
+        return false;
+    }
+
+    function autoCatchToggle() {
+        catchState = !catchState;
+        localStorage.setItem('autoCatchState', catchState);
+        const button = document.getElementById('auto-catch-toggle');
+        button.textContent = `Auto Catch\n[${catchState ? 'ON' : 'OFF'}]`;
+        button.classList.replace(...(catchState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
+        toggleFarmLoop();
+    }
+
     function autoFarmTick() {
+        // Check wall-clock time before any action, including after sleep or reload.
+        if (checkFarmDeadline()) return;
+        if (catchState) {
+            for (const plot of App.game.farming.plotList) {
+                if (plot.wanderer) App.game.farming.handleWanderer(plot);
+            }
+        }
         if (replantState) {
             doReplant();
         } else {
@@ -260,6 +335,9 @@ initLocalStorage("autoHarvestState", false);
 initLocalStorage("autoReplantState", false);
 initLocalStorage("autoMulchState", false);
 initLocalStorage("autoPlantSelected", 0);
+initLocalStorage("autoCatchState", false);
+initLocalStorage("autoFarmStopAt", 0);
+initLocalStorage("autoFarmTimerMinutes", 60);
 
 function loadEpheniaScript(scriptName, initFunction, priorityFunction) {
     function reportScriptError(scriptName, error) {

@@ -107,3 +107,35 @@ test('bounded native ball choices prefer faster owned stock and account for quot
  let prepared=r.prepareActivity(activity,snapshot);assert.equal(prepared.pokeball,1);
  snapshot.resources.balls=[0,0,0];const great={...item,type:1,name:'Greatball',totalPrice:()=>100000};shop.items.push(great);prepared=r.prepareActivity(activity,snapshot);assert.equal(prepared.pokeball,0);
 });
+test('native claimed or completed ball and Oak quests yield policy slots to unfinished quests',()=>{
+ for(const claimed of [true,false]) {
+  const {r,w,activity}=fixture();
+  const native=(type,target,done)=>({constructor:{name:type},amount:10,pointsReward:100,initial:o(0),focus:o(done?10:0),claimed:o(done&&claimed),...target});
+  w.App.game.quests={questList:()=>[native('UsePokeballQuest',{pokeball:0},true),native('UsePokeballQuest',{pokeball:1},false)]};
+  let snapshot=r.readQuestSnapshot({activities:[activity]});let prepared=r.prepareActivity(activity,snapshot);assert.equal(prepared.pokeball,1);assert.equal(r.buildCandidates(snapshot)[0].questIds[0],snapshot.quests[1].id);
+  w.OakItemType={Magic_Ball:0,Amulet_Coin:1,Exp_Share:3};w.App.game.oakItems={isUnlocked:()=>true,maxActiveCount:()=>1};
+  w.App.game.quests.questList=()=>[native('UseOakItemQuest',{item:0},true),native('UseOakItemQuest',{item:3},false)];
+  snapshot=r.readQuestSnapshot({activities:[activity]});prepared=r.prepareActivity(activity,snapshot);assert.deepEqual([...prepared.oakItems],[3]);assert.equal(r.buildCandidates(snapshot)[0].questIds[0],snapshot.quests[1].id);
+ }
+});
+test('mixed capture money defeat gems and non-wild Oak progress cannot inflate ball lot',()=>{
+ const {r,w,snapshot,activity,q}=fixture();q.remaining=1;w.OakItemType={Magic_Ball:0,Amulet_Coin:1,Exp_Share:3};
+ for(const type of ['GainMoneyQuest','DefeatPokemonsQuest','GainGemsQuest','UseOakItemQuest']) {
+  const target=type==='DefeatPokemonsQuest'?activity.target:type==='GainGemsQuest'?{type:0}:{item:3};
+  snapshot.quests.push({id:type,type,target,remaining:100000,reward:100,known:true,active:true});
+ }
+ const supply=r.planSupplies(snapshot,activity);assert.equal(supply.purchase.quantity,2);
+});
+test('nested zero-ball zero-money token recovery keeps independent leaf stall clock',()=>{
+ const {r,snapshot,activity}=fixture();snapshot.resources.money=0;snapshot.resources.balls[0]=0;
+ snapshot.activities.push({id:'d',target:{kind:'dungeon',name:'D'},unlocked:true,rates:{dungeon:1},capabilities:['dungeon'],requirements:[{resource:'dungeonToken',amount:50}]});snapshot.quests=[{id:'dq',type:'DefeatDungeonQuest',target:{kind:'dungeon',name:'D'},remaining:1,reward:100,known:true,active:true}];
+ let applies=0;r.acquired=[{name:'navigation',adapter:{inspect:()=>({status:'ready'}),apply:()=>{applies++;return true;},release(){}}}];
+ r.executePlan(snapshot,{primary:null,reasons:[]});assert.equal(applies,1);assert.match(r.recoveryState.key,/money/);r.recoveryState.time-=121000;
+ r.executePlan(snapshot,{primary:null,reasons:[]});assert.equal(applies,1);assert.match(r.reason,/no progress/);
+});
+test('real leaf money progress keeps parent token preparation productive',()=>{
+ const {r,snapshot,activity}=fixture();snapshot.resources.money=0;
+ const tokens={resource:'dungeonToken',activity},money={resource:'money',activity};
+ assert.equal(r.trackRecovery(snapshot,tokens,0),true);assert.equal(r.trackRecovery(snapshot,money,0),true);
+ snapshot.resources.money=1;assert.equal(r.trackRecovery(snapshot,money,110000),true);assert.equal(r.trackRecovery(snapshot,tokens,130000),true);
+});

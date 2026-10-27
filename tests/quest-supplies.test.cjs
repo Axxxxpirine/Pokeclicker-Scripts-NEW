@@ -314,3 +314,21 @@ for (const [waterCatchRate,stock] of [[100,10],[25,16]]) {
   assert.match(candidate.reason,/supply|ball/i);
  });
 }
+
+for (const [waterCatchRate,stock,general] of [[25,16,false],[100,10,true]]) {
+ test(`typed capture supply costs account for conditional policy (Water ${waterCatchRate}%, general=${general})`,()=>{
+  const {r,w,snapshot,activity}=fixture();
+  activity.types=[0,2];activity.rates={};activity.capabilities.push('captureType');
+  activity.encounters=[{name:'Normal',type:[0],catchRate:100},{name:'Water',type:[2],catchRate:waterCatchRate}];
+  w.PokemonFactory.catchRateHelper=rate=>rate+3;
+  snapshot.quests=[{id:'water',type:'CapturePokemonTypesQuest',target:{type:2},remaining:10,reward:100,known:true,active:true}];
+  if (general) snapshot.quests.push({id:'all',type:'CapturePokemonsQuest',target:{},remaining:10,reward:100,known:true,active:true});
+  snapshot.resources.balls=[stock,0,0];snapshot.resources.money=0;w.TownList={};
+  const candidate=r.buildCandidates(snapshot)[0];
+  // Restricted Water captures need 40 expected balls at 25%. Catching all
+  // species while seeking ten Water captures needs 20 at a 50/50 split.
+  assert.equal(candidate.seconds,null);
+  assert.equal(candidate.score,0);
+  assert.match(candidate.reason,/supply|ball/i);
+ });
+}

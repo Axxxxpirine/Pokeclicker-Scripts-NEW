@@ -658,3 +658,21 @@ for (const state of ["full", "queued"]) {
     assert.deepEqual(h.added,[]);
   });
 }
+
+// Catches selecting the first stocked berry when only a later berry exceeds the active reserve.
+test("farm point lease selects stock above the active mutation reserve", () => {
+  const h = farm({autoFarmPlanReserve:10});
+  h.plots.forEach((plot,index) => {plot.isSafeLocked = index !== 0;});
+  h.farming.berryInventory[0](1);
+  h.farming.berryInventory[1](20);
+  h.w.document.getElementById("auto-farm-plan-toggle").click();
+  assert.equal(h.w.localStorage.getItem("autoFarmPlanState"), "true");
+  const activity = h.adapter.inspect().activities.find(a=>a.capabilities.includes("farmPoints"));
+  assert.equal(activity.status, "ready");
+  const t = owner(h.adapter);
+  h.adapter.apply(t, {});
+  assert.deepEqual(h.actions, [["plant",0,1]]);
+  assert.equal(h.farming.berryInventory[0](),1);
+  assert.equal(h.farming.berryInventory[1](),19);
+  assert.equal(h.adapter.inspect().status,"waiting");
+});

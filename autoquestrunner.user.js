@@ -39,7 +39,7 @@ class AutoQuestRunner {
             const initial = this.read(q.initial), focus = Number(this.read(q.focus));
             const progress = initial == null ? 0 : Math.max(0, Math.min(amount, focus - Number(initial)));
             const target = type === 'DefeatPokemonsQuest' ? {kind:'route',number:q.route,region:q.region}
-                : type === 'DefeatGymQuest' ? {kind:'gym',name:q.gymTown}
+                : type === 'DefeatGymQuest' ? {kind:'gym',gym:q.gymTown}
                 : type === 'DefeatDungeonQuest' ? {kind:'dungeon',name:q.dungeon}
                 : {type:q.type,berryType:q.berryType,pokeball:q.pokeball,item:q.item};
             const known = Object.hasOwn(this.questMetrics,type);
@@ -63,19 +63,31 @@ class AutoQuestRunner {
             const names = typeof RouteHelper === 'undefined' ? [] : RouteHelper.getAvailablePokemonList(route.number,route.region);
             const encounters = names.map(n => typeof pokemonMap === 'undefined' ? null : pokemonMap[n]).filter(Boolean);
             const id = `route:${route.region}:${route.number}`;
-            activities.push({id,target:{kind:'route',number:route.number,region:route.region},unlocked:route.isUnlocked(),
+            const target = {kind:'route',number:route.number,region:route.region};
+            const reason = this.departureRestriction(target) || (!route.isUnlocked() ? 'Route locked' : null)
+                || (typeof MapHelper !== 'undefined' && !MapHelper.accessToRoute(route.number,route.region) ? 'Route inaccessible' : null);
+            activities.push({id,target,unlocked:!reason,reason,
                 encounters,types:[...new Set(encounters.flatMap(p => p.type))],
                 capabilities:['defeat','capture','captureType','money','tokens','gems','shiny'],rates:context.rates?.[id] || {}});
         }
+        if (typeof GymList !== 'undefined') for (const [key,gym] of Object.entries(GymList)) {
+            if (!gym.parent) continue;
+            const target = {kind:'gym',name:gym.parent.name,gym:key,region:gym.parent.region};
+            const reason = this.destinationRestriction(target,gym);
+            const id = `gym:${key}`;
+            activities.push({id,target,unlocked:!reason,reason,capabilities:['gym'],rates:context.rates?.[id] || {}});
+        }
         if (typeof TownList !== 'undefined') for (const [name,town] of Object.entries(TownList)) {
-            const unlocked = town.isUnlocked();
-            for (const kind of ['gym','dungeon']) {
-                const native = kind === 'gym' ? (typeof GymList !== 'undefined' && GymList[name]) : (typeof dungeonList !== 'undefined' && dungeonList[name]);
-                if (!native) continue;
-                const id = `${kind}:${name}`;
-                activities.push({id,target:{kind,name,region:town.region},unlocked, rates:context.rates?.[id] || {},
-                    requirements:kind === 'dungeon' ? [{resource:'dungeonToken',amount:native.baseTokenCost}] : []});
-            }
+            const dungeon = town.dungeon;
+            if (!dungeon) continue;
+            const target = {kind:'dungeon',name,region:town.region};
+            const restriction = this.destinationRestriction(target,dungeon);
+            const waitingGuide = restriction === 'Wait for hired dungeon guide';
+            const reason = waitingGuide ? null : restriction;
+            const id = `dungeon:${name}`;
+            activities.push({id,target,unlocked:!reason,reason,capabilities:['dungeon'],rates:context.rates?.[id] || {},
+                requirements:[{resource:'dungeonToken',amount:Number(dungeon.tokenCost)},
+                    ...(waitingGuide ? [{resource:'guide',amount:1,reason:restriction}] : [])]});
         }
         // Adapter inspection supplies availability and existing commitments without applying objectives.
         for (const name of ['farm','hatchery','mine','frontier']) {
@@ -89,8 +101,30 @@ class AutoQuestRunner {
         }
         return activities;
     }
+    static departureRestriction(target) {
+        if (typeof player !== 'undefined') {
+            if (target.region < 0 || target.region > player.highestRegion()) return 'Destination region locked';
+            if (target.region !== player.region && !(player.highestRegion() > 0 &&
+                TownList[GameConstants.DockTowns?.[player.region]]?.isUnlocked())) return 'Departure dock locked';
+        }
+        return null;
+    }
+    static destinationRestriction(target,native) {
+        const town = typeof TownList !== 'undefined' && TownList[target.name];
+        if (!town?.isUnlocked()) return 'Destination town locked';
+        const departure = this.departureRestriction(target);
+        if (departure) return departure;
+        if (typeof MapHelper !== 'undefined' && !MapHelper.accessToTown(target.name)) return 'Destination town inaccessible';
+        if (!native.isUnlocked()) return 'Native destination locked (ticket or requirements)';
+        if (target.kind === 'dungeon') {
+            if (!native.hasUnlockedBoss()) return 'No unlocked dungeon boss';
+            if (typeof DungeonGuides !== 'undefined' && DungeonGuides.hired()) return 'Wait for hired dungeon guide';
+        }
+        return null;
+    }
     static activityMatches(quest, activity) {
         const metric = this.questMetrics[quest.type], target = quest.target;
+        if (target.gym && target.gym !== activity.target.gym) return false;
         if (target.kind && (activity.target.kind !== target.kind || (target.name && target.name !== activity.target.name)
             || (target.number != null && (target.number !== activity.target.number || target.region !== activity.target.region)))) return false;
         if (['captureType','gems'].includes(metric) && !activity.types?.includes(target.type)) return false;
@@ -111,8 +145,14 @@ class AutoQuestRunner {
                 .map(q => ({quest:q,rate:this.activityRate(q,activity)})).filter(c => c.rate > 0 ||
                     (this.activityMatches(c.quest,activity) && activity.capabilities?.includes(this.questMetrics[c.quest.type])));
             if (!contributions.length) return null;
-            const prerequisites = (activity.requirements || []).filter(r => (snapshot.resources[r.resource] || 0) < r.amount)
+            const shortfall = requirements => requirements.filter(r => !Number.isFinite(r.amount) || (snapshot.resources[r.resource] || 0) < r.amount)
                 .map(r => ({...r,missing:r.amount-(snapshot.resources[r.resource] || 0)}));
+            const entryPrerequisites = shortfall(activity.requirements || []);
+            const totalRequirements = (activity.requirements || []).map(requirement => ({...requirement,
+                amount:activity.target.kind === 'dungeon' && requirement.resource === 'dungeonToken'
+                    ? requirement.amount * Math.max(...contributions.filter(c => c.quest.type === 'DefeatDungeonQuest').map(c => c.quest.remaining),1)
+                    : requirement.amount}));
+            const prerequisites = shortfall(totalRequirements);
             if (activity.module && snapshot.commitments[activity.module] && snapshot.commitments[activity.module] !== activity.id)
                 prerequisites.push({resource:'commitment',module:activity.module,reason:'Wait for existing work'});
             let recoverySeconds = 0, estimated = contributions.every(c => c.rate > 0);
@@ -124,13 +164,14 @@ class AutoQuestRunner {
             const seconds = Math.max(...contributions.map(c => c.quest.remaining/c.rate)) + Math.max(0,activity.setupSeconds || 0) + recoverySeconds;
             const reward = contributions.reduce((sum,c) => sum+c.quest.reward,0);
             return {...activity,questIds:contributions.map(c => c.quest.id),contributions:contributions.map(c => ({id:c.quest.id,rate:c.rate})),
-                prerequisites,exploratory:!estimated && !prerequisites.length,seconds:estimated && Number.isFinite(seconds) ? seconds : null,
+                prerequisites,entryPrerequisites,totalRequirements,exploratory:!estimated && !prerequisites.length,seconds:estimated && Number.isFinite(seconds) ? seconds : null,
                 score:estimated && seconds > 0 && Number.isFinite(seconds) ? reward/seconds : 0,
                 reason:estimated ? null : prerequisites.length ? 'Resource recovery estimate unavailable' : 'Progress estimate unavailable, observe useful attempts'};
         }).filter(Boolean);
     }
     static selectPlan(snapshot, candidates) {
         const reasons = snapshot.quests.filter(q => !q.known).map(q => q.reason);
+        for (const activity of snapshot.activities.filter(a => !a.unlocked && a.reason)) reasons.push(`${activity.id}: ${activity.reason}`);
         for (const q of snapshot.quests.filter(q => q.known && !q.claimed && q.remaining > 0)) {
             if (!candidates.some(c => c.questIds.includes(q.id))) reasons.push(`${q.id}: No unlocked path with a useful progress estimate`);
         }

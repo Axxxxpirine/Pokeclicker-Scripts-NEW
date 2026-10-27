@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.3
+// @version       1.1.4
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js

@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {load}=require('./helpers.cjs');
+const {load,observable:o,Currency}=require('./helpers.cjs');
 function setup(){ const f=load('autoquestrunner.user.js','<div class="battle-view"></div>',{Preload:{hideSplashScreen(){}}}); f.run('AutoQuestRunner.init()'); return f; }
 test('runner initializes OFF and rejects unavailable adapters without gameplay',()=>{const f=setup();const r=f.w.AutoQuestRunner;assert.equal(r.version,1);assert.equal(r.active,false);assert.equal(r.start(['navigation']),false);assert.equal(r.active,false);});
 test('registry survives either order and session invalidates on manual control',()=>{const f=setup();let releases=0;f.w.PokeAutomationAdapters.adapters.navigation={inspect:()=>({status:'ready'}),acquire:()=>true,apply:()=>true,release:()=>releases++};const r=f.w.AutoQuestRunner;assert.equal(r.start(['navigation']),true);const token=r.owner;assert.equal(r.start(['navigation']),false);assert.equal(token.isCurrent(),true);token.onManual('travel');assert.equal(token.active,false);assert.equal(token.isCurrent(),false);assert.equal(releases,1);assert.equal(r.apply('navigation',{}),false);r.init();assert.equal(r.active,false);});
@@ -88,7 +88,7 @@ function loopFixture(kind='route',deferred=false){
  const f=setup(),r=f.w.AutoQuestRunner;let value=0,list,accepted=0,claimed=0,applies=0,state='ready';const notifications=[];
  const obs=initial=>{let v=initial;const listeners=new Set();const o=(...args)=>{if(!args.length)return v;v=args[0];for(const cb of listeners)deferred?notifications.push(()=>cb(v)):cb(v);};o.subscribe=cb=>(listeners.add(cb),{dispose:()=>listeners.delete(cb)});return o;};
  const make=()=>quest(kind==='route'?'DefeatPokemonsQuest':kind==='gym'?'DefeatGymQuest':'DefeatDungeonQuest',{amount:1,route:1,region:0,gymTown:'Special Gym',dungeon:'Shared Town',initial:obs(null),focus:()=>value,claimed:obs(false)});
- list=obs([make()]);nativeLocations(f);f.w.Routes={regionRoutes:[{number:1,region:0,isUnlocked:()=>true}]};f.w.RouteHelper={getAvailablePokemonList:()=>[]};f.w.App.game.wallet={currencies:[()=>1000,()=>1000]};
+ list=obs([make()]);nativeLocations(f);f.w.Routes={regionRoutes:[{number:1,region:0,isUnlocked:()=>true}]};f.w.RouteHelper={getAvailablePokemonList:()=>[]};f.w.App.game.wallet={currencies:[()=>1000,()=>0,()=>1000]};
  f.w.App.game.quests={questList:list,questSlots:()=>1,canStartNewQuest:()=>!list().some(q=>q.initial()!=null&&!q.claimed()),beginQuest:i=>{accepted++;list()[i].initial(value);},claimQuest:i=>{const q=list()[i];assert.equal(value-q.initial(),1);assert.equal(q.claimed(),false);claimed++;q.claimed(true);list([make()]);}};
  f.w.PokeAutomationAdapters.adapters.navigation={acquire:()=>true,release:()=>{},inspect:()=>({status:state}),apply:(owner,objective)=>{assert.equal(list()[0].initial()!=null,true);assert.equal(objective.count,1);assert.ok(objective.session.tokenBudget>0);applies++;state='running';return true;}};
  return {f,r,complete(){value++;state='done';f.tick();},flush(){while(notifications.length)notifications.shift()();},counts:()=>({accepted,claimed,applies}),replace(){list([make()]);}};
@@ -105,4 +105,32 @@ test('native claim refusal retries after deferred completion settles and confirm
  const t=loopFixture('route',true),native=t.f.w.App.game.quests.claimQuest;let attempts=0,settled=false;
  t.f.w.App.game.quests.claimQuest=i=>{attempts++;if(settled)native(i);};t.r.start();t.complete();assert.equal(attempts,1);assert.equal(t.counts().claimed,0);
  t.flush();settled=true;t.f.tick();assert.equal(attempts,2);assert.equal(t.counts().claimed,1);t.f.tick();assert.equal(attempts,2);assert.equal(t.counts().accepted,2);t.r.stop();
+});
+
+for (const [questPoints,tokens,want] of [[0,1000,'dungeon:Forest'],[1000,0,null]]) {
+ test(`native currency wallet QP ${questPoints} DT ${tokens} gates dungeon entry by tokens`,()=>{
+  const f=setup(),r=f.w.AutoQuestRunner;
+  f.w.GameConstants={Currency};
+  f.w.App.game.wallet={currencies:[o(0),o(questPoints),o(tokens),o(0),o(0),o(0),o(0)]};
+  f.w.App.game.quests={questList:()=>[quest('DefeatDungeonQuest',{dungeon:'Forest',amount:1,initial:()=>0,focus:()=>0})]};
+  const activity={id:'dungeon:Forest',target:{kind:'dungeon',name:'Forest'},unlocked:true,capabilities:['dungeon'],rates:{},requirements:[{resource:'dungeonToken',amount:50}]};
+  const snapshot=r.readQuestSnapshot({activities:[activity]});
+  const plan=r.selectPlan(snapshot,r.buildCandidates(snapshot));
+  assert.equal(plan.primary?.id ?? null,want);
+  assert.equal(snapshot.resources.dungeonToken,tokens);
+ });
+}
+test('native token gains renew recovery progress while quest points cannot disguise a stall',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner;
+ f.w.GameConstants={Currency};const wallet=[o(0),o(1000),o(0),o(0),o(0),o(0),o(0)];
+ f.w.App.game.wallet={currencies:wallet};
+ const recovery={resource:'dungeonToken',activity:{id:'route:0:1'}};
+ const snapshot=()=>r.readQuestSnapshot({activities:[]});
+ assert.equal(r.trackRecovery(snapshot(),recovery,0),true);
+ wallet[Currency.dungeonToken](10);
+ assert.equal(r.trackRecovery(snapshot(),recovery,119000),true);
+ assert.equal(r.trackRecovery(snapshot(),recovery,121000),true);
+ wallet[Currency.questPoint](2000);
+ assert.equal(r.trackRecovery(snapshot(),recovery,240001),false);
+ assert.match(r.reason,/no progress/);
 });

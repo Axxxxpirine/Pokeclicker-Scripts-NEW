@@ -49,7 +49,8 @@ class AutoQuestRunner {
         });
         const value = v => Number(this.read(v)) || 0;
         const currencies = game.wallet?.currencies || [];
-        const resources = {money:value(currencies[0]),dungeonToken:value(currencies[1]),
+        const currency = typeof GameConstants === 'undefined' ? {} : GameConstants.Currency || {};
+        const resources = {money:value(currencies[currency.money]),dungeonToken:value(currencies[currency.dungeonToken]),
             balls:(game.pokeballs?.pokeballs || []).map(b => value(b.quantity))};
         const activities = this.readActivities(context);
         return {epoch:this.questEpoch,quests,resources,activities,rates:context.rates || {},
@@ -489,7 +490,7 @@ class AutoQuestRunner {
                 this.acquired.push({name, adapter});
             }
         } catch (error) { this.stop(error.message); return false; }
-        this.confirmedClaims = new WeakSet(); this.executing = null; this.currentPlan = null;
+        this.confirmedClaims = new WeakSet(); this.executing = null; this.navigationAttempt = null; this.currentPlan = null;
         this.observation = null; this.observedRates = {}; this.rateSamples = {}; this.listStarted=null;
         this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
@@ -633,8 +634,14 @@ class AutoQuestRunner {
         }
         plan.primary=primary;
         const inspection=nav?.inspect();
-        if (inspection?.status==='blocked') {this.reason=inspection.reason || 'Navigation blocked';return;}
-        if (this.executing?.epoch===snapshot.epoch && this.executing.id===primary.id && !['done','ready'].includes(inspection?.status)) return;
+        // A blocked previous objective must not prevent an accessible replacement.
+        // Retry the same blocked target slowly so transient startup restrictions can clear.
+        const sameAttempt=this.navigationAttempt?.epoch===snapshot.epoch && this.navigationAttempt.id===primary.id;
+        if (inspection?.status==='blocked' && sameAttempt && Date.now()-this.navigationAttempt.time<1000) {
+            this.reason=inspection.reason || 'Navigation blocked';return;
+        }
+        if (this.executing?.epoch===snapshot.epoch && this.executing.id===primary.id && !['done','ready','blocked'].includes(inspection?.status)) return;
+        this.navigationAttempt={id:primary.id,epoch:snapshot.epoch,time:Date.now()};
         if (this.apply('navigation',{target:primary.target,count:1,
             encounters:snapshot.quests.some(q=>q.type === 'CatchShadowsQuest' && !q.claimed && q.remaining > 0 && primary.questIds?.includes(q.id)),session:{moneyBudget:Number.MAX_SAFE_INTEGER,
             tokenBudget:Number.MAX_SAFE_INTEGER,minutes:1440,stallMinutes:1440}})) {

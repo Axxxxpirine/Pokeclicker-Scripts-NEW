@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {load, observable:o} = require('./helpers.cjs');
+const {load, observable:o, Currency} = require('./helpers.cjs');
 function setup(storage = {}) {
     const state = {town:0,fighting:1,dungeon:2,gym:3,safari:4,battleFrontier:5};
     const route = (number,unlocked=true) => ({number,region:0,isUnlocked:()=>unlocked});
@@ -9,16 +9,16 @@ function setup(storage = {}) {
     const town = {name:'Home',region:0,subRegion:0,content:[],isUnlocked:()=>true};
     const forest = {...town,name:'Forest',dungeon:d};
     const stats = {routeKills:[[o(0),o(0),o(0),o(0)]],dungeonsCleared:[o(0)],gymsDefeated:[o(0)]};
-    const game = {gameState:state.town,statistics:stats,wallet:{currencies:[o(100),o(100)]},party:{getPokemonByName:()=>null},quests:{currentQuests:()=>[]},pokeballs:{calculatePokeballToUse:()=>0,pokeballs:[]}};
+    const game = {gameState:state.town,statistics:stats,wallet:{currencies:[o(100),o(0),o(100)]},party:{getPokemonByName:()=>null},quests:{currentQuests:()=>[]},pokeballs:{calculatePokeballToUse:()=>0,pokeballs:[]}};
     const player = {route:0,region:0,subregion:0,town,highestRegion:()=>0,itemList:{}};
     let c;
     const eac = {navigationVersion:1,autoClickState:o(false),autoGymState:o(false),autoDungeonState:o(false),autoDungeonEncounterMode:false,autoDungeonChestMode:false,autoDungeonAlwaysOpenRareChests:false,autoGymSelect:0,autoDungeonTracker:{},
         toggleAutoClick(){this.autoClickState(!this.autoClickState());},toggleAutoGym(){this.autoGymState(!this.autoGymState());},toggleAutoDungeon(){this.autoDungeonState(!this.autoDungeonState());},autoDungeon(){}};
     const move = (name)=>{player.route=0;player.town=towns[name];player.region=player.town.region;game.gameState=state.town;};
     const towns={Home:town,Forest:forest};
-    const globals={App:{isUsingClient:true,game},player,EnhancedAutoClicker:eac,GameConstants:{GameState:state,Currency:{money:0,dungeonToken:1},Pokerus:{Contagious:2,Resistant:3},getDungeonIndex:()=>0,getGymIndex:()=>0},
+    const globals={App:{isUsingClient:true,game},player,EnhancedAutoClicker:eac,GameConstants:{GameState:state,Currency,Pokerus:{Contagious:2,Resistant:3},getDungeonIndex:()=>0,getGymIndex:()=>0},
       MapHelper:{accessToRoute:(n,region)=>routes.find(r=>r.number===n&&r.region===region)?.isUnlocked(),accessToTown:n=>!!towns[n]?.isUnlocked(),moveToTown:move,moveToRoute(n,r){player.route=n;player.region=r;game.gameState=state.fighting;}},Routes:{regionRoutes:routes},RouteHelper:{getAvailablePokemonList:()=>['A']},TownList:towns,GymList:{},DungeonGuides:{hired:()=>false},
-      DungeonRunner:{dungeonID:0,dungeonFinished:o(false),fightingBoss:o(false),defeatedBoss:o(null),canStartDungeon:x=>x.hasUnlockedBoss(),dungeonWon(){if(!this.dungeonFinished()){this.dungeonFinished(true);this.returnToTown();}},dungeonLost(){this.dungeonFinished(true);this.returnToTown();},dungeonLeave(){this.dungeonFinished(true);this.returnToTown();},initializeDungeon(x){this.dungeonID++;this.dungeonFinished(false);game.wallet.currencies[1](game.wallet.currencies[1]()-x.tokenCost);game.gameState=state.dungeon;this.dungeon=x;},returnToTown(){c.w.MapHelper.moveToTown('Forest');},fighting:o(false)},GymRunner:{autoRestart:o(false),startGym(){game.gameState=state.gym;}},Battle:{catching:()=>false},DungeonBattle:{catching:()=>false},Preload:{hideSplashScreen(){}},Shop:class Shop{},ItemList:{},PokemonType:{},pokemonMap:{},Notifier:{notify(){}},NotificationConstants:{NotificationOption:{warning:'warning'}}};
+      DungeonRunner:{dungeonID:0,dungeonFinished:o(false),fightingBoss:o(false),defeatedBoss:o(null),canStartDungeon:x=>x.hasUnlockedBoss(),dungeonWon(){if(!this.dungeonFinished()){this.dungeonFinished(true);this.returnToTown();}},dungeonLost(){this.dungeonFinished(true);this.returnToTown();},dungeonLeave(){this.dungeonFinished(true);this.returnToTown();},initializeDungeon(x){this.dungeonID++;this.dungeonFinished(false);game.wallet.currencies[2](game.wallet.currencies[2]()-x.tokenCost);game.gameState=state.dungeon;this.dungeon=x;},returnToTown(){c.w.MapHelper.moveToTown('Forest');},fighting:o(false)},GymRunner:{autoRestart:o(false),startGym(){game.gameState=state.gym;}},Battle:{catching:()=>false},DungeonBattle:{catching:()=>false},Preload:{hideSplashScreen(){}},Shop:class Shop{},ItemList:{},PokemonType:{},pokemonMap:{},Notifier:{notify(){}},NotificationConstants:{NotificationOption:{warning:'warning'}}};
     c=load('autonavigation.user.js','<div class="battle-view"></div>',globals,storage);
     c.run('AutoNavigator.init()');
     const nav=c.run('AutoNavigator');
@@ -36,15 +36,15 @@ test('manual movement cancels without returning or restarting a competing mode',
 });
 test('dungeon entry debits a finite budget and never enters again beyond it',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons',target:50,tokenBudget:20});
- assert.equal(f.game.wallet.currencies[1](),90);
+ assert.equal(f.game.wallet.currencies[2](),90);
  f.stats.dungeonsCleared[0](1);f.w.DungeonRunner.dungeonWon();f.nav.tick(true);
- assert.equal(f.game.wallet.currencies[1](),80);
+ assert.equal(f.game.wallet.currencies[2](),80);
  f.stats.dungeonsCleared[0](2);f.w.DungeonRunner.dungeonWon();f.nav.tick(true);
- assert.equal(f.game.wallet.currencies[1](),80);assert.equal(f.nav.active,false);
+ assert.equal(f.game.wallet.currencies[2](),80);assert.equal(f.nav.active,false);
 });
 test('reserve blocks entry even when the session budget can afford it',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons',tokenReserve:95});
- assert.equal(f.game.wallet.currencies[1](),100);assert.equal(f.nav.active,false);
+ assert.equal(f.game.wallet.currencies[2](),100);assert.equal(f.nav.active,false);
 });
 test('stalled route is skipped and all stalled targets end the session',()=>{
  const f=setup();f.nav.start(settings);f.nav.lastProgressAt=Date.now()-121000;f.nav.tick(true);assert.equal(f.player.route,3);
@@ -60,11 +60,11 @@ test('invalid settings cannot replace an active run or allow non-finite budgets'
 });
 test('deadline stops before a further dungeon purchase',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons'});f.w.DungeonRunner.dungeonWon();f.nav.deadline=Date.now()-1;f.nav.tick(true);
- assert.equal(f.game.wallet.currencies[1](),90);assert.equal(f.nav.active,false);
+ assert.equal(f.game.wallet.currencies[2](),90);assert.equal(f.nav.active,false);
 });
 test('current dungeon repetitions count new clears rather than lifetime clears',()=>{
  const f=setup();f.w.MapHelper.moveToTown('Forest');f.stats.dungeonsCleared[0](80);f.nav.start({...settings,mode:'dungeonRuns',target:1});
- f.stats.dungeonsCleared[0](81);f.w.DungeonRunner.dungeonWon();f.nav.tick(true);assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[1](),90);
+ f.stats.dungeonsCleared[0](81);f.w.DungeonRunner.dungeonWon();f.nav.tick(true);assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[2](),90);
 });
 test('unsupported and locked quests are skipped for an accessible active location quest',()=>{
  const f=setup();const quest=(route,type='DefeatPokemonsQuest')=>({constructor:{name:type},route,region:0,isCompleted:()=>false,inProgress:()=>true,progress:()=>0});
@@ -103,7 +103,7 @@ test('direct location changes cannot silently keep an objective active',()=>{
 });
 test('manual exit through the dungeon entrance cancels instead of re-entering',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons',target:50});f.w.DungeonRunner.dungeonLeave();f.nav.tick(true);
- assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[1](),90);
+ assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[2](),90);
 });
 test('pending dungeon completion cannot steal location after Stop & return',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons',target:50});f.w.DungeonRunner.defeatedBoss('Boss');f.nav.stop();
@@ -113,7 +113,7 @@ test('manual travel aborts pending completion and does not teleport back',()=>{
  const f=setup();f.nav.start({...settings,mode:'dungeons',target:50});f.w.MapHelper.moveToRoute(1,0);f.w.DungeonRunner.dungeonWon();assert.equal(f.player.route,1);
 });
 test('temporarily locked bosses never consume entry budget',()=>{
- const f=setup();f.d.hasUnlockedBoss=()=>false;f.nav.start({...settings,mode:'dungeons',target:50});assert.equal(f.nav.spent.dungeonToken,0);assert.equal(f.game.wallet.currencies[1](),100);
+ const f=setup();f.d.hasUnlockedBoss=()=>false;f.nav.start({...settings,mode:'dungeons',target:50});assert.equal(f.nav.spent.dungeonToken,0);assert.equal(f.game.wallet.currencies[2](),100);
 });
 test('native refused entry is skipped without charging its quote',()=>{
  const f=setup();f.w.DungeonRunner.initializeDungeon=()=>false;f.nav.start({...settings,mode:'dungeons',target:50});f.nav.tick(true);assert.equal(f.nav.spent.dungeonToken,0);assert.equal(f.nav.active,false);assert.equal(f.nav.skipped.size,1);
@@ -170,7 +170,7 @@ test('tracked gym and dungeon achievements resolve native indices and honour tok
  const f=setup();const l=league(f);tracked(f,'gym',101);
  assert.equal(f.nav.start({...settings,mode:'achievement'}),true);assert.equal(l.starts[0],'Elite One');l.finish();assert.equal(f.nav.active,false);
  const d=setup();tracked(d,'dungeon',2);d.nav.start({...settings,mode:'achievement',tokenBudget:10});
- d.stats.dungeonsCleared[0](1);d.w.DungeonRunner.dungeonWon();d.nav.tick(true);assert.equal(d.nav.active,false);assert.equal(d.game.wallet.currencies[1](),90);
+ d.stats.dungeonsCleared[0](1);d.w.DungeonRunner.dungeonWon();d.nav.tick(true);assert.equal(d.nav.active,false);assert.equal(d.game.wallet.currencies[2](),90);
 });
 test('changing the tracked achievement manually cancels its navigation session',()=>{
  const f=setup();tracked(f);f.nav.start({...settings,mode:'achievement'});
@@ -207,8 +207,8 @@ test('current-zone shiny capture only accepts native shiny ownership and is boun
 });
 test('current dungeon collection caps paid entries even after losses and respects its origin',()=>{
  const f=setup();f.game.party.alreadyCaughtPokemonByName=()=>false;f.w.MapHelper.moveToTown('Forest');
- f.nav.start({...settings,mode:'zoneShiny',target:1,tokenBudget:100});assert.equal(f.game.wallet.currencies[1](),90);
- f.w.DungeonRunner.dungeonLost();f.nav.tick(true);assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[1](),90);assert.equal(f.player.town.name,'Forest');
+ f.nav.start({...settings,mode:'zoneShiny',target:1,tokenBudget:100});assert.equal(f.game.wallet.currencies[2](),90);
+ f.w.DungeonRunner.dungeonLost();f.nav.tick(true);assert.equal(f.nav.active,false);assert.equal(f.game.wallet.currencies[2](),90);assert.equal(f.player.town.name,'Forest');
 });
 test('zone objectives recheck available species and refuse ordinary towns',()=>{
  const f=setup();f.game.party.alreadyCaughtPokemonByName=()=>false;assert.equal(f.nav.start({...settings,mode:'zoneCapture'}),false);
@@ -431,4 +431,42 @@ test('external Shadow encounter traversal is scoped to its owned objective and r
  try {f.nav.explore();} finally {f.w.console.error = error;}
  assert.equal(owner.active, false);
  assert.equal(f.eac.autoDungeonEncounterMode, false);
+});
+
+function questNavigation(f,kind='route') {
+ const fs=require('node:fs'),path=require('node:path');
+ f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');
+ f.w.GameConstants.Pokeball={None:-1};
+ f.game.pokeballs.pokeballs=[{quantity:o(100)}];f.game.pokeballs.calculateCatchTime=()=>1000;
+ f.game.party.calculatePokemonAttack=()=>100;
+ f.w.PokemonFactory={routeHealth:()=>100,routeMoney:()=>20,routeDungeonTokens:()=>10,catchRateHelper:()=>100};
+ f.w.pokemonMap.A={name:'A',type:[0],catchRate:100};
+ const q={constructor:{name:kind==='dungeon'?'DefeatDungeonQuest':'DefeatPokemonsQuest'},amount:1,pointsReward:100,initial:o(0),
+  focus:kind==='dungeon'?f.stats.dungeonsCleared[0]:f.stats.routeKills[0][1],claimed:o(false),dungeon:'Forest',route:1,region:0};
+ f.game.quests={questList:()=>[q],canStartNewQuest:()=>false};
+ const adapter=f.w.PokeAutomationAdapters.adapters.navigation,nativeApply=adapter.apply;let attempts=0;
+ adapter.apply=(...args)=>{attempts++;return nativeApply(...args);};
+ return {runner:f.w.AutoQuestRunner,adapter,attempts:()=>attempts};
+}
+test('runner replaces a lost unfunded dungeon objective with an accessible token recovery route',()=>{
+ const f=setup(),{runner:r,adapter,attempts}=questNavigation(f,'dungeon');let now=1000;f.w.Date.now=()=>now;
+ f.game.wallet.currencies[Currency.questPoint](1000);f.game.wallet.currencies[Currency.dungeonToken](10);
+ assert.equal(r.start(),true);assert.equal(f.game.gameState,f.state.dungeon);assert.equal(f.game.wallet.currencies[Currency.dungeonToken](),0);
+ f.w.DungeonRunner.dungeonLost();f.nav.tick(true);assert.equal(adapter.inspect().status,'blocked');
+ r.tick();assert.equal(f.player.route,1);assert.equal(f.nav.externalObjective.target.kind,'route');assert.equal(adapter.inspect().status,'running');
+ const recoveringAttempts=attempts();for(let i=0;i<5;i++)r.tick();assert.equal(attempts(),recoveringAttempts);
+ f.game.wallet.currencies[Currency.dungeonToken](10);now+=1000;r.tick();
+ assert.equal(f.game.gameState,f.state.dungeon);assert.equal(f.nav.externalObjective.target.kind,'dungeon');
+ r.stop();
+});
+for(const restriction of ['battle','guide'])test(`runner retries a temporary initial ${restriction} restriction without tight retry spam`,()=>{
+ const f=setup(),{runner:r,adapter,attempts}=questNavigation(f);let now=1000;f.w.Date.now=()=>now;
+ if(restriction==='battle')f.game.gameState=f.state.gym;
+ else f.w.DungeonGuides.hired=()=>true;
+ assert.equal(r.start(),true);assert.equal(adapter.inspect().status,'blocked');assert.equal(f.nav.active,false);assert.equal(attempts(),1);
+ for(const elapsed of [0,250,500,999]){now=1000+elapsed;r.tick();}assert.equal(attempts(),1);
+ now=2000;r.tick();assert.equal(attempts(),2);assert.equal(f.nav.active,false);
+ f.game.gameState=f.state.town;f.w.DungeonGuides.hired=()=>false;now=3000;r.tick();
+ assert.equal(f.nav.active,true);assert.equal(f.player.route,1);assert.equal(attempts(),3);assert.equal(adapter.inspect().status,'running');
+ f.w.MapHelper.moveToRoute(3,0);assert.equal(r.active,false);now+=2000;r.tick();assert.equal(attempts(),3);assert.equal(f.player.route,3);
 });

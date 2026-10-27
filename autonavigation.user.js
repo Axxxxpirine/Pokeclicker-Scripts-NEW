@@ -91,6 +91,15 @@ class AutoNavigator {
                 registry.movementOwner = owner; registry.clickerOwner = owner; this.externalOwner = owner; this.externalStatus = 'ready'; return true;
             },
             apply:(owner, objective) => this.applyExternal(owner, objective),
+            // Transit is owned movement only. The coordinator quotes and buys at the shop.
+            travel:(owner,target) => {
+                if (this.externalOwner!==owner || !owner?.active || !owner.isCurrent() || target?.kind!=='town' || !this.accessible(target)) return false;
+                if (Battle.catching() || DungeonBattle.catching() || [GameConstants.GameState.dungeon,GameConstants.GameState.gym].includes(App.game.gameState)) {
+                    this.externalStatus='waiting';return false;
+                }
+                this.externalObjective=null;this.pendingExternal=null;this.current=null;
+                const moved=this.move(target);this.externalStatus=moved ? 'ready' : 'blocked';return moved;
+            },
             release:(owner, reason) => {
                 if (this.externalOwner !== owner) return false;
                 this.releasingExternal = true;

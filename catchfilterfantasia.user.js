@@ -422,12 +422,42 @@ function resetBallFilter(event) {
     localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
 }
 
+function registerQuestCaptureAdapter() {
+    const w=!App.isUsingClient ? unsafeWindow : window;
+    const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    if (registry.version!==1) return;
+    let owner=null,policy=null;
+    registry.adapters.capture={version:1,
+        inspect:()=>({status:registry.captureOwner?.isCurrent() ? 'running' : 'ready'}),
+        acquire:token=>{
+            if (!token?.isCurrent() || (registry.captureOwner && registry.captureOwner!==token)) return false;
+            owner=token;registry.captureOwner=token;return true;
+        },
+        apply:(token,objective)=>{
+            if (owner!==token || !token.isCurrent() || typeof objective?.choose!=='function') return false;
+            policy=objective.choose;registry.capturePolicy=policy;return true;
+        },
+        release:token=>{
+            if (owner!==token) return false;
+            if (registry.capturePolicy===policy) delete registry.capturePolicy;
+            if (registry.captureOwner===token) delete registry.captureOwner;
+            owner=null;policy=null;return true;
+        },
+    };
+}
 function overloadPokeballMethod() {
+    registerQuestCaptureAdapter();
     const hasBall = function(ballId) {
         return App.game.pokeballs.pokeballs[ballId]?.quantity() > 0;
     }
 
     const newMethod = function(id, isShiny, isShadow, encounterType) {
+        const w=!App.isUsingClient ? unsafeWindow : window;
+        const registry=w.PokeAutomationAdapters;
+        if (registry?.captureOwner?.isCurrent()) {
+            const temporary=registry.capturePolicy?.(id,isShiny,isShadow,encounterType);
+            if (temporary!==undefined) return temporary;
+        }
         const pokemon = PokemonHelper.getPokemonById(id);
         if (!pokemon) {
             return App.game.pokeballs.oldCalculatePokeballToUse(id, isShiny, isShadow, encounterType);

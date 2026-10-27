@@ -139,3 +139,12 @@ test('real leaf money progress keeps parent token preparation productive',()=>{
  assert.equal(r.trackRecovery(snapshot,tokens,0),true);assert.equal(r.trackRecovery(snapshot,money,0),true);
  snapshot.resources.money=1;assert.equal(r.trackRecovery(snapshot,money,110000),true);assert.equal(r.trackRecovery(snapshot,tokens,130000),true);
 });
+
+test('free refresh keeps dungeon work with chained money standard-ball and token recovery',()=>{
+ const {r,snapshot:s,activity}=fixture();s.quests=[{id:'d',type:'DefeatDungeonQuest',known:true,active:true,claimed:false,target:{kind:'dungeon',name:'Cave'},remaining:1,reward:100}];
+ s.resources.money=0;s.activities.push({id:'cave',target:{kind:'dungeon',name:'Cave'},unlocked:true,capabilities:['dungeon'],rates:{},requirements:[{resource:'dungeonToken',amount:10}]});
+ const tokenRoute=r.recoveryActivity(s,'dungeonToken');assert.ok(tokenRoute);
+ const supplies=r.planSupplies(s,{...tokenRoute,recoverTokens:true});assert.equal(supplies.ready,false);assert.equal(supplies.recovery.resource,'money');assert.equal(supplies.recovery.activity.id,activity.id);
+ assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,false);
+ s.activities[1].requirements=[{resource:'money',amount:10}];assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,false);
+});

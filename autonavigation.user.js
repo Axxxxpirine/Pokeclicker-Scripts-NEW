@@ -91,6 +91,11 @@ class AutoNavigator {
                 registry.movementOwner = owner; registry.clickerOwner = owner; this.externalOwner = owner; this.externalStatus = 'ready'; return true;
             },
             apply:(owner, objective) => this.applyExternal(owner, objective),
+            suspend:owner => {
+                if (this.externalOwner!==owner || !owner?.active || !owner.isCurrent()) return false;
+                if (Battle.catching() || DungeonBattle.catching() || [GameConstants.GameState.dungeon,GameConstants.GameState.gym].includes(App.game.gameState)) return false;
+                this.externalSuspended=true;this.externalObjective=null;this.pendingExternal=null;this.current=null;this.externalStatus='ready';return true;
+            },
             // Transit is owned movement only. The coordinator quotes and buys at the shop.
             travel:(owner,target) => {
                 if (this.externalOwner!==owner || !owner?.active || !owner.isCurrent() || target?.kind!=='town' || !this.accessible(target)) return false;
@@ -106,7 +111,7 @@ class AutoNavigator {
                 try { if (this.active) this.stop(reason, false, false); }
                 finally {
                     this.releasingExternal = false; this.externalOwner = null; this.externalObjective = null;
-                    this.externalStatus = 'ready'; this.pendingExternal = null;
+                    this.externalStatus = 'ready'; this.pendingExternal = null; this.externalSuspended=false;
                     if (registry.movementOwner === owner) registry.movementOwner = null;
                     if (registry.clickerOwner === owner && registry.clickerAdapterOwner !== owner) registry.clickerOwner = null;
                     if (this.savedSettings) this.settings = this.savedSettings;
@@ -120,6 +125,7 @@ class AutoNavigator {
     static applyExternal(owner, objective) {
         if (this.externalOwner !== owner || !owner.active || !owner.isCurrent()) return false;
         const t = objective?.target;
+        this.externalSuspended=false;
         if (!t || !['route','gym','dungeon'].includes(t.kind) || !Number.isSafeInteger(objective.count) || objective.count < 1 || !this.accessible(t)) {
             this.externalStatus = 'blocked'; this.status('Invalid or inaccessible external objective'); return false;
         }
@@ -475,6 +481,7 @@ class AutoNavigator {
                 w.PokeAutomationAdapters.adapters.navigation.release(this.externalOwner, 'Expired session'); return;
             }
             if (!this.externalOwner && Date.now() >= this.deadline) { this.stop('Session time limit'); return; }
+            if (this.externalOwner && this.externalSuspended) return;
             const state = App.game.gameState, gs = GameConstants.GameState;
             if (![gs.town,gs.fighting,gs.dungeon,gs.gym].includes(state)) { this.stop('Other activity started',false); return; }
             if (DungeonGuides.hired()) { this.stop('Dungeon Guides started',false); return; }

@@ -399,3 +399,11 @@ test('runner uses real owned native transit purchase and route resume without st
  const s={epoch:1,quests:[{id:'q',type:'UsePokeballQuest',target:{pokeball:0},remaining:2,known:true,active:true}],resources:{money:100,balls:[0]},activities:[activity],rates:{},commitments:{}};
  f.w.MapHelper.moveToRoute(3,0);assert.equal(r.start(),true);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,0);assert.equal(ball.quantity(),0);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(ball.quantity(),2);s.resources.balls[0]=2;r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,1);assert.equal(f.nav.settings.mode,'routes');assert.equal(f.game.wallet.currencies[0](),80);r.stop();
 });
+test('owned Frontier suspension clears pending movement and survives native Frontier state until resumed',()=>{
+ const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation;
+ const t={active:true,isCurrent(){return this.active;},onManual(){this.active=false;a.release(this,'Manual');}};
+ assert.equal(a.acquire(t),true);assert.equal(a.apply(t,{target:{kind:'route',number:1,region:0},count:1}),true);
+ assert.equal(a.suspend(t),true);f.game.gameState=f.state.battleFrontier;f.nav.tick(true);assert.equal(t.active,true);assert.equal(f.nav.pendingExternal,null);
+ f.game.gameState=f.state.town;assert.equal(a.apply(t,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.player.route,3);
+ t.active=false;a.release(t);assert.equal(a.suspend(t),false);
+});

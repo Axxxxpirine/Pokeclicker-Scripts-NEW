@@ -4,7 +4,7 @@
 // @author        Axxxxpirine (Ideas: goldhaxx #431, Bowbylone/Dionisos94 #240, Sorrow #134)
 // @description   Bounded route, gym, dungeon and quest objectives with manual interruption, return, and Poké Mart budgets. Requires the fork's Enhanced Auto Clicker.
 // @license       GPL-3.0 License
-// @version       1.1.1
+// @version       1.1.3
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js
@@ -38,6 +38,7 @@ class AutoNavigator {
         try { saved = JSON.parse(localStorage.getItem('autoNavigationSettings')); } catch { /* use defaults */ }
         this.settings = this.valid(saved) ? saved : {...this.defaults};
         this.installMovementHooks();
+        this.registerAdapter();
         const panel = document.createElement('details');
         panel.id = 'auto-navigation';
         panel.className = 'border rounded p-2 mb-1';
@@ -77,6 +78,73 @@ class AutoNavigator {
         document.getElementById('navigation-stop').addEventListener('click', () => this.stop('Stopped',true));
     }
 
+    static registerAdapter() {
+        const w = !App.isUsingClient ? unsafeWindow : window;
+        const registry = w.PokeAutomationAdapters ||= {version:1, adapters:Object.create(null), movementOwner:null};
+        if (registry.version !== 1) return;
+        registry.adapters.navigation = {
+            inspect:() => ({status:this.externalStatus || (this.active ? 'running' : 'ready'),
+                reason:this.message || '', progress:this.current ? this.progress(this.current) : 0,
+                costs:{...(this.spent || {money:0,dungeonToken:0})}}),
+            acquire:owner => {
+                if (!owner?.active || !owner.isCurrent() || (registry.movementOwner && registry.movementOwner !== owner) || (registry.clickerOwner && registry.clickerOwner !== owner) || (this.active && this.externalOwner !== owner)) return false;
+                registry.movementOwner = owner; registry.clickerOwner = owner; this.externalOwner = owner; this.externalStatus = 'ready'; return true;
+            },
+            apply:(owner, objective) => this.applyExternal(owner, objective),
+            suspend:owner => {
+                if (this.externalOwner!==owner || !owner?.active || !owner.isCurrent()) return false;
+                if (Battle.catching() || DungeonBattle.catching() || [GameConstants.GameState.dungeon,GameConstants.GameState.gym].includes(App.game.gameState)) return false;
+                this.externalSuspended=true;this.externalObjective=null;this.pendingExternal=null;this.current=null;this.externalStatus='ready';return true;
+            },
+            // Transit is owned movement only. The coordinator quotes and buys at the shop.
+            travel:(owner,target) => {
+                if (this.externalOwner!==owner || !owner?.active || !owner.isCurrent() || target?.kind!=='town' || !this.accessible(target)) return false;
+                if (Battle.catching() || DungeonBattle.catching() || [GameConstants.GameState.dungeon,GameConstants.GameState.gym].includes(App.game.gameState)) {
+                    this.externalStatus='waiting';return false;
+                }
+                this.externalObjective=null;this.pendingExternal=null;this.current=null;
+                const moved=this.move(target);this.externalStatus=moved ? 'ready' : 'blocked';return moved;
+            },
+            release:(owner, reason) => {
+                if (this.externalOwner !== owner) return false;
+                this.releasingExternal = true;
+                try { if (this.active) this.stop(reason, false, false); }
+                finally {
+                    this.releasingExternal = false; this.externalOwner = null; this.externalObjective = null;
+                    this.externalStatus = 'ready'; this.pendingExternal = null; this.externalSuspended=false;
+                    if (registry.movementOwner === owner) registry.movementOwner = null;
+                    if (registry.clickerOwner === owner && registry.clickerAdapterOwner !== owner) registry.clickerOwner = null;
+                    if (this.savedSettings) this.settings = this.savedSettings;
+                    this.savedSettings = null;
+                }
+                return true;
+            },
+        };
+    }
+
+    static applyExternal(owner, objective) {
+        if (this.externalOwner !== owner || !owner.active || !owner.isCurrent()) return false;
+        const t = objective?.target;
+        this.externalSuspended=false;
+        if (!t || !['route','gym','dungeon'].includes(t.kind) || !Number.isSafeInteger(objective.count) || objective.count < 1 || !this.accessible(t)) {
+            this.externalStatus = 'blocked'; this.status('Invalid or inaccessible external objective'); return false;
+        }
+        // Battle and capture callbacks retain their current objective until safe.
+        if (this.active && (Battle.catching() || DungeonBattle.catching() || [GameConstants.GameState.dungeon,GameConstants.GameState.gym].includes(App.game.gameState))) {
+            this.pendingExternal = objective; this.externalStatus = 'waiting'; return true;
+        }
+        if (!this.active) {
+            this.savedSettings = this.settings;
+            this.externalStarting = true;
+            let started;
+            try { started = this.start({...this.defaults, ...objective.session, mode:'routes'}); }
+            finally { this.externalStarting = false; }
+            if (!started) { this.externalStatus = 'blocked'; return false; }
+        }
+        this.externalObjective = {...objective, target:{...t,key:`external:${t.kind}:${t.region}:${t.number ?? t.gym ?? t.name}`}, baseline:this.clears(t)};
+        this.current = null; this.externalStatus = 'running'; this.tick(true); return true;
+    }
+
     static valid(s) {
         return s && Object.hasOwn(this.modes,s.mode) && this.shopItems.includes(s.item) && typeof s.pokemon === 'string'
             && ['target','stock','minutes','stallMinutes'].every(k => Number.isSafeInteger(s[k]) && s[k] >= 1)
@@ -102,7 +170,7 @@ class AutoNavigator {
         for (const name of ['moveToRoute','moveToTown']) {
             const original = MapHelper[name];
             MapHelper[name] = function(...args) {
-                if (owner.active && !owner.internal) owner.stop('Manual or external travel',false,true);
+                if ((owner.active || owner.externalOwner) && !owner.internal) owner.stop('Manual or external travel',false,true);
                 return original.apply(this,args);
             };
         }
@@ -159,6 +227,11 @@ class AutoNavigator {
         if (!this.valid(settings)) { this.status('Invalid settings. Counts and budgets must be finite whole numbers.'); return false; }
         const w = !App.isUsingClient ? unsafeWindow : window;
         const clicker = w.EnhancedAutoClicker || (typeof EnhancedAutoClicker !== 'undefined' ? EnhancedAutoClicker : null);
+        if (this.externalOwner && !this.externalStarting) { this.externalOwner.onManual('Manual navigation control'); if (this.externalOwner) return false; }
+        const registry = w.PokeAutomationAdapters;
+        if (registry?.clickerOwner && registry.clickerOwner !== this && !(this.externalStarting && registry.clickerOwner === this.externalOwner)) {
+            this.status('Clicker is controlled by another session'); return false;
+        }
         if (!clicker || clicker.navigationVersion !== 1) { this.status('Install the fork’s updated Enhanced Auto Clicker first.'); return false; }
         if (this.active) this.stop('Restarted',true);
         if (![GameConstants.GameState.town,GameConstants.GameState.fighting].includes(App.game.gameState) || DungeonGuides.hired() || DungeonBattle.catching()) {
@@ -172,10 +245,13 @@ class AutoNavigator {
         }
         const objective = this.prepareObjective(settings);
         if (!objective) return false;
-        this.settings = {...settings}; localStorage.setItem('autoNavigationSettings',JSON.stringify(this.settings));
+        if (registry && !this.externalStarting) registry.clickerOwner = this;
+        this.settings = {...settings};
+        if (!this.externalStarting) localStorage.setItem('autoNavigationSettings',JSON.stringify(this.settings));
         this.clicker = clicker; clicker.navigationOwner = this;
         this.origin = this.location();
         this.snapshot = {click:clicker.autoClickState(),gym:clicker.autoGymState(),dungeon:clicker.autoDungeonState()};
+        const storedModes = Object.fromEntries(['autoClickState','autoGymState','autoDungeonState'].map(key => [key,localStorage.getItem(key)]));
         this.own(() => {
             if (clicker.autoGymState()) clicker.toggleAutoGym();
             if (clicker.autoDungeonState()) clicker.toggleAutoDungeon();
@@ -183,6 +259,9 @@ class AutoNavigator {
         });
         // A reload must not restart any unattended spending loop.
         for (const key of ['autoClickState','autoGymState','autoDungeonState']) localStorage.setItem(key,'false');
+        if (this.externalStarting) {
+            for (const [key,value] of Object.entries(storedModes)) value === null ? localStorage.removeItem(key) : localStorage.setItem(key,value);
+        }
         this.purified = 0; this.spent = {money:0,dungeonToken:0}; this.skipped = new Set(); this.current = null;
         this.achievementGoal = objective.achievement;
         this.fixedTarget = objective.target;
@@ -194,14 +273,34 @@ class AutoNavigator {
         this.questIds = new WeakMap(); this.nextQuestId = 0;
         this.startClears = settings.mode === 'dungeonRuns' ? this.clears({kind:'dungeon',name:this.origin.name}) : 0;
         this.active = true;
-        this.tick(true);
+        if (!this.externalStarting) this.tick(true);
         return true;
     }
 
     static stop(reason = 'Stopped', returnHome = true, abandon = returnHome) {
+        if (this.externalOwner && !this.releasingExternal) {
+            this.externalOwner.onManual(reason);
+            if (!this.active) return;
+        }
         if (!this.active) return;
+        if (this.releasingExternal) {
+            this.active = false;
+            const c = this.clicker;
+            const stored = Object.fromEntries(['autoClickState','autoGymState','autoDungeonState'].map(key => [key,localStorage.getItem(key)]));
+            this.own(() => {
+                if (c.autoClickState() === true && this.snapshot.click !== true) c.toggleAutoClick();
+                // Spending modes were disabled by this session. Only restore unchanged values.
+                if (!/manual/i.test(reason) && c.autoGymState() === false && this.snapshot.gym && c.canStartAutoGym?.()) c.toggleAutoGym();
+                if (!/manual/i.test(reason) && c.autoDungeonState() === false && this.snapshot.dungeon && c.canStartAutoDungeon?.()) c.toggleAutoDungeon();
+            });
+            for (const [key,value] of Object.entries(stored)) value === null ? localStorage.removeItem(key) : localStorage.setItem(key,value);
+            if (c.navigationOwner === this) c.navigationOwner = null;
+            this.current = null; this.status(reason); return;
+        }
         if (abandon) this.abandonDungeon();
         this.active = false;
+        const registry = (!App.isUsingClient ? unsafeWindow : window).PokeAutomationAdapters;
+        if (registry?.clickerOwner === this) registry.clickerOwner = null;
         const c = this.clicker;
         this.own(() => {
             GymRunner.autoRestart(false);
@@ -296,6 +395,7 @@ class AutoNavigator {
     static needsResistance(name) { return App.game.party.getPokemonByName(name)?.pokerus === GameConstants.Pokerus.Contagious; }
     static remaining(t) {
         const mode = this.settings.mode;
+        if (this.externalObjective) return this.clears(t) < this.externalObjective.baseline + this.externalObjective.count;
         if (mode === 'achievement') return !this.achievementGoal.isCompleted();
         if (mode === 'league') return this.clears(t) < t.winTarget;
         if (['zoneCapture','zoneShiny'].includes(mode)) return this.missingSpecies(t).length > 0;
@@ -326,6 +426,7 @@ class AutoNavigator {
     }
     static shopItem() { return ItemList[this.settings.item]; }
     static candidates() {
+        if (this.externalObjective) return [this.externalObjective.target];
         const mode = this.settings.mode;
         if (mode === 'achievement' || ['zoneCapture','zoneShiny'].includes(mode)) return [this.fixedTarget];
         if (mode === 'league') {
@@ -375,7 +476,12 @@ class AutoNavigator {
     static tick(force = false) {
         if (!this.active) return;
         try {
-            if (Date.now() >= this.deadline) { this.stop('Session time limit'); return; }
+            if (this.externalOwner && (!this.externalOwner.active || !this.externalOwner.isCurrent())) {
+                const w = !App.isUsingClient ? unsafeWindow : window;
+                w.PokeAutomationAdapters.adapters.navigation.release(this.externalOwner, 'Expired session'); return;
+            }
+            if (!this.externalOwner && Date.now() >= this.deadline) { this.stop('Session time limit'); return; }
+            if (this.externalOwner && this.externalSuspended) return;
             const state = App.game.gameState, gs = GameConstants.GameState;
             if (![gs.town,gs.fighting,gs.dungeon,gs.gym].includes(state)) { this.stop('Other activity started',false); return; }
             if (DungeonGuides.hired()) { this.stop('Dungeon Guides started',false); return; }
@@ -388,7 +494,12 @@ class AutoNavigator {
                 if (Date.now()-this.lastProgressAt >= this.settings.stallMinutes*60000) this.stop('Battle stalled');
                 return;
             }
-            if (Battle.catching() || DungeonBattle.catching()) return;
+            if (Battle.catching() || DungeonBattle.catching()) { if (this.externalOwner) this.externalStatus = 'waiting'; return; }
+            if (this.pendingExternal) {
+                const pending = this.pendingExternal; this.pendingExternal = null;
+                this.applyExternal(this.externalOwner, pending); return;
+            }
+            if (this.externalOwner && !this.externalObjective) return;
             if (this.settings.mode === 'achievement') {
                 if (this.achievementGoal.isCompleted()) { this.stop('Tracked achievement completed'); return; }
                 if (App.game.achievementTracker.trackedAchievement() !== this.achievementGoal) { this.stop('Tracked achievement changed'); return; }
@@ -424,7 +535,14 @@ class AutoNavigator {
             }
             if (!this.current) {
                 const next = this.candidates().find(t=>!this.skipped.has(t.key) && this.accessible(t) && this.remaining(t) && this.canPay(t));
-                if (!next) { this.stop('No eligible objective remains (completed, unavailable, budget or skipped)'); return; }
+                if (!next) {
+                    if (this.externalObjective) {
+                        this.externalStatus = this.remaining(this.externalObjective.target) ? 'blocked' : 'done';
+                        return;
+                    }
+                    this.stop('No eligible objective remains (completed, unavailable, budget or skipped)'); return;
+                }
+                if (this.externalOwner) this.externalStatus = 'running';
                 this.current=next;this.lastProgress=this.progress(next);this.lastProgressAt=Date.now();
                 if (!this.move(next)) {this.skipped.add(next.key);this.current=null;return;}
                 this.status(`ON · ${next.name || `Route ${next.number} / region ${next.region}`} · Stop & return or travel manually to cancel`);
@@ -472,6 +590,7 @@ class AutoNavigator {
         if (!this.active || this.current?.kind !== 'dungeon' || App.game.gameState !== GameConstants.GameState.dungeon
             || DungeonRunner.dungeonID !== this.runId) return;
         const collection = ['zoneCapture','zoneShiny'].includes(this.settings.mode);
+        const encounters = this.externalOwner?.isCurrent() && this.externalObjective?.encounters === true;
         const c = this.clicker;
         const preferences = { autoDungeonEncounterMode:c.autoDungeonEncounterMode,
             autoDungeonChestMode:c.autoDungeonChestMode, autoDungeonLootTier:c.autoDungeonLootTier };
@@ -479,10 +598,14 @@ class AutoNavigator {
             // Use the existing traversal's full encounter/chest modes for a
             // collection objective. Restore preferences without persisting them.
             if (collection) Object.assign(c, {autoDungeonEncounterMode:true,autoDungeonChestMode:true,autoDungeonLootTier:0});
+            if (encounters) c.autoDungeonEncounterMode = true;
             this.own(()=>c.autoDungeon());
         }
         catch (e) { console.error('[Auto Navigation]',e);this.stop('Dungeon traversal failed'); }
-        finally { if (collection) Object.assign(c, preferences); }
+        finally {
+            if (collection) Object.assign(c, preferences);
+            else if (encounters && c.autoDungeonEncounterMode === true) c.autoDungeonEncounterMode = preferences.autoDungeonEncounterMode;
+        }
     }
 }
 

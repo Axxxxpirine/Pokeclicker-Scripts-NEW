@@ -5,7 +5,7 @@
 // @description   An experimental catch filter that aims to help you have much better control and will completely change how you capture Pokémon.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.6
+// @version       1.9.8
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -130,7 +130,14 @@ function initCatchFilter() {
     loadFilteredList();
 }
 
+function manualQuestCaptureControl() {
+    const w = !App.isUsingClient ? unsafeWindow : window;
+    const owner = w.PokeAutomationAdapters?.captureOwner;
+    if (owner?.isCurrent()) owner.onManual('Manual catch filter control');
+}
+
 function toggleTypeFilter(event) {
+    manualQuestCaptureControl();
     const elem = event.target;
     const index = +elem.getAttribute('data-src');
     const typeName = PokemonType[index];
@@ -308,6 +315,7 @@ function filterPokemonDungeon(event) {
 }
 
 function filterAllPoke() {
+    manualQuestCaptureControl();
     catchFilter = [];
     for (const poke of pokemonList) {
         catchFilter.push(poke.id);
@@ -317,18 +325,21 @@ function filterAllPoke() {
 }
 
 function unfilterAllPoke() {
+    manualQuestCaptureControl();
     catchFilter = [];
     localStorage.setItem('catchFilter', JSON.stringify(catchFilter));
     filterPokeSearch(true);
 }
 
 function resetBallFilterAll() {
+    manualQuestCaptureControl();
     filterBallPref = Array.from({length: Math.max(pokemonList.length, filterBallPref.length)}, () => ({normal: 0, shiny: 0}));
     localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
     filterPokeSearch(true);
 }
 
 function toggleCatchFilter(event) {
+    manualQuestCaptureControl();
     const elem = event.target;
     filterState ? filterColor = false : filterColor = true;
     filterState = filterColor;
@@ -367,6 +378,7 @@ function filterPokeSearch(event) {
 function toggleFilteredPoke(event) {
     const elem = event.target.closest('[ball-pref], [data-src]');
     if (!elem) return;
+    manualQuestCaptureControl();
     const id = +elem.getAttribute('data-src');
     if (elem.hasAttribute('ball-pref')) {
         const ballPref = +elem.getAttribute('ball-pref');
@@ -414,6 +426,7 @@ function updateFilterPokerus() {
 }
 
 function resetBallFilter(event) {
+    manualQuestCaptureControl();
     const elem = event.target;
     const ballPref = +elem.getAttribute('ball-pref');
     const prefType = elem.getAttribute('pref-type');
@@ -422,12 +435,42 @@ function resetBallFilter(event) {
     localStorage.setItem('filterBallPref', JSON.stringify(filterBallPref));
 }
 
+function registerQuestCaptureAdapter() {
+    const w=!App.isUsingClient ? unsafeWindow : window;
+    const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    if (registry.version!==1) return;
+    let owner=null,policy=null;
+    registry.adapters.capture={version:1,
+        inspect:()=>({status:registry.captureOwner?.isCurrent() ? 'running' : 'ready'}),
+        acquire:token=>{
+            if (!token?.isCurrent() || (registry.captureOwner && registry.captureOwner!==token)) return false;
+            owner=token;registry.captureOwner=token;return true;
+        },
+        apply:(token,objective)=>{
+            if (owner!==token || !token.isCurrent() || typeof objective?.choose!=='function') return false;
+            policy=objective.choose;registry.capturePolicy=policy;return true;
+        },
+        release:token=>{
+            if (owner!==token) return false;
+            if (registry.capturePolicy===policy) delete registry.capturePolicy;
+            if (registry.captureOwner===token) delete registry.captureOwner;
+            owner=null;policy=null;return true;
+        },
+    };
+}
 function overloadPokeballMethod() {
+    registerQuestCaptureAdapter();
     const hasBall = function(ballId) {
         return App.game.pokeballs.pokeballs[ballId]?.quantity() > 0;
     }
 
     const newMethod = function(id, isShiny, isShadow, encounterType) {
+        const w=!App.isUsingClient ? unsafeWindow : window;
+        const registry=w.PokeAutomationAdapters;
+        if (registry?.captureOwner?.isCurrent()) {
+            const temporary=registry.capturePolicy?.(id,isShiny,isShadow,encounterType);
+            if (temporary!==undefined) return temporary;
+        }
         const pokemon = PokemonHelper.getPokemonById(id);
         if (!pokemon) {
             return App.game.pokeballs.oldCalculatePokeballToUse(id, isShiny, isShadow, encounterType);

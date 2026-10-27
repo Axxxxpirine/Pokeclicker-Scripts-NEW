@@ -166,3 +166,61 @@ test('an unmeasured random objective remains unknown despite unrelated observati
  activity.rates={money:2};
  assert.equal(r.buildCandidates(snapshot)[0].estimateSource,'unknown');
 });
+
+for (const late of [false, true]) {
+ for (const mutation of ['toggleCatchFilter', 'toggleTypeFilter', 'filterAllPoke', 'unfilterAllPoke', 'resetBallFilterAll', 'species', 'ball', 'resetBallFilter']) {
+  test(`manual filter ${mutation} stops capture owner before mutation (late=${late})`, () => {
+   const {r,w,f,balls} = fixture();
+   const fs = require('node:fs');
+   balls[0].quantity(10);
+   w.pokemonList = [{id:1,name:'Pidgey'}];
+   w.PokemonType = {0:'Normal'};
+   w.document.body.innerHTML = '<input id="filter-search"><div id="filter-results"></div><button id="manual" data-src="0"></button>';
+   if (late) r.applyCapturePolicy({ball:0});
+   f.run(fs.readFileSync(require('node:path').join(__dirname,'../catchfilterfantasia.user.js'),'utf8').split('// Repair only')[0]);
+   f.run('filterState=false;filterTypes=[];filterBallPref=[{normal:0,shiny:0}];catchFilter=[];overloadPokeballMethod();');
+   if (!late) r.applyCapturePolicy({ball:0});
+   let stops = 0;
+   const stop = r.stop.bind(r);
+   r.stop = reason => {
+    stops++;
+    assert.equal(f.run('filterState'), false);
+    assert.equal(f.run('catchFilter.length'), 0);
+    assert.equal(f.run('filterBallPref[0].normal'), 0);
+    stop(reason);
+   };
+   w.filterPokeSearch(true);
+   assert.equal(r.active, true, 'browsing is not a manual policy mutation');
+   let elem = w.document.getElementById('manual');
+   let handler = mutation;
+   if (mutation === 'species') {
+    elem = w.document.querySelector('#filter-results > div'); handler = 'toggleFilteredPoke';
+   } else if (mutation === 'ball' || mutation === 'resetBallFilter') {
+    elem = w.document.querySelector('[ball-pref]');
+    if (mutation === 'ball') handler = 'toggleFilteredPoke';
+   }
+   w[handler]({target:elem});
+   assert.equal(stops, 1);
+   assert.equal(r.active, false);
+   assert.equal(w.PokeAutomationAdapters.captureOwner, undefined);
+   if (mutation === 'toggleCatchFilter') {
+    assert.equal(w.localStorage.getItem('filterState'), 'true');
+    assert.equal(w.App.game.pokeballs.calculatePokeballToUse(1,false,false,0), -1);
+   }
+   if (mutation === 'ball') assert.equal(JSON.parse(w.localStorage.getItem('filterBallPref'))[0].normal, 1);
+   if (mutation === 'species') assert.deepEqual(JSON.parse(w.localStorage.getItem('catchFilter')), [1]);
+  });
+ }
+}
+
+test('Shadow quest execution requests encounter traversal only while contributing to the objective', () => {
+ const {r,snapshot,balls} = fixture();
+ balls[0].quantity(2);
+ snapshot.resources.balls[0] = 2;
+ snapshot.quests = [{id:'shadow',known:true,active:true,type:'CatchShadowsQuest',target:{},remaining:1,reward:10}];
+ const primary = {id:'d',target:{kind:'dungeon',name:'D'},capabilities:['shadow'],questIds:['shadow'],rates:{},unlocked:true};
+ let objective;
+ r.acquired = [{name:'navigation',adapter:{inspect:()=>({status:'ready'}),apply:(owner,next)=>{objective=next;return true;},release(){}}}];
+ r.executePlan(snapshot,{primary,background:[],reasons:[]});
+ assert.equal(objective?.encounters, true);
+});

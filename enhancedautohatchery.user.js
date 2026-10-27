@@ -5,7 +5,7 @@
 // @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.3.2
+// @version       3.3.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -49,12 +49,12 @@ function registerQuestHatcheryAdapter() {
     const w=!App.isUsingClient ? unsafeWindow : window;
     const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
     registry.adapters.hatchery={
-        inspect:()=>({...questHatchStatus,activities:[{id:'hatchery',target:{kind:'hatchery'},unlocked:App.game.breeding.canAccess(),
+        inspect:()=>({...questHatchStatus,activities:[{id:'hatchery',target:{kind:'hatchery'},status:'ready',unlocked:App.game.breeding.canAccess(),
             capabilities:['hatch','capture','shiny'],rates:{}} , ...[...new Set(App.game.party.caughtPokemon.flatMap(p=>{
                 const data=typeof PokemonHelper === 'undefined' ? null : PokemonHelper.getPokemonById(p.id);
                 return data ? [data.type1,data.type2].filter(t=>t>=0):[];
             }))].map(type=>({id:`hatchery:${type}`,target:{kind:'hatchery'},types:[type],type,
-                unlocked:App.game.breeding.canAccess(),capabilities:['captureType'],rates:{}}))]}),
+                status:'ready',unlocked:App.game.breeding.canAccess(),capabilities:['captureType'],rates:{}}))]}),
         acquire(owner) {if (questHatchOwner && questHatchOwner !== owner) return false;
             questHatchOwner=owner;questHatchPrevious=hatchState;questHatchApplied=false;return true;},
         apply(owner,objective) {if (owner !== questHatchOwner || !owner?.active || !owner.isCurrent()) return false;

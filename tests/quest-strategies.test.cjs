@@ -35,3 +35,23 @@ test('free fallback retains a dungeon with recoverable tokens before a completio
  const candidate=r.buildCandidates(s)[0];assert.equal(candidate.seconds,null);assert.equal(candidate.exploratory,false);assert.equal(r.recoveryActivity(s,'dungeonToken').id,'route');assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,false);
  s.activities[1].unlocked=false;assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,true);
 });
+
+test('Frontier availability recovers after destination unlock without repeating a blocked application', () => {
+ const h = frontier();
+ const token = {active:true,isCurrent(){return this.active;}};
+ h.w.PokeAutomationAdapters.movementOwner = token;
+ assert.equal(h.a.acquire(token), true);
+ h.w.TownList.Frontier.isUnlocked = () => false;
+ assert.equal(h.a.apply(token, {count:1}), false);
+ const fs = require('node:fs');
+ h.w.Preload = {hideSplashScreen(){}};
+ h.run(fs.readFileSync(require('node:path').join(__dirname,'../autoquestrunner.user.js'),'utf8'));
+ h.run('AutoQuestRunner.init()');
+ const r = h.w.AutoQuestRunner;
+ const s = snapshot('ClearBattleFrontierQuest');
+ s.activities = r.readActivities({});
+ assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh, true);
+ h.w.TownList.Frontier.isUnlocked = () => true;
+ s.activities = r.readActivities({});
+ assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh, false);
+});

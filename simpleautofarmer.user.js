@@ -5,7 +5,7 @@
 // @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture, a stop timer, manual mutation plans and bounded pre-maturity Rich Mulch share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.2
+// @version       1.9.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -73,11 +73,23 @@ function initAutoFarm() {
     const questWindow = !App.isUsingClient ? unsafeWindow : window;
     const registry = questWindow.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
     const validQuestOwner = owner => owner === questOwner && owner?.active && owner.isCurrent();
+    // Availability is objective-specific and read fresh, never latched to the last apply.
+    const berryAvailability = berryType => {
+        if (typeof farming.canAccess === 'function' && !farming.canAccess())
+            return {status:'blocked',reason:'Farm access locked'};
+        const growing = farming.plotList.some((plot,index) => plot?.isUnlocked && !plot.isSafeLocked
+            && !validBerry(mutationPlan[index]) && plot.berry !== -1
+            && (berryType == null || plot.berry === berryType));
+        const stock = berryType == null ? farming.berryInventory.some(n=>n() > 0)
+            : farming.berryInventory[berryType]?.() > 0;
+        return growing || stock ? {status:growing ? 'waiting':'ready'}
+            : {status:'blocked',reason:'Requested berry stock absent, no supported native acquisition available'};
+    };
     registry.adapters.farm = {
         inspect:() => ({...questStatus,activities:[{id:'farm:points',target:{kind:'farm'},
-            unlocked:typeof farming.canAccess !== 'function' || farming.canAccess(),capabilities:['farmPoints'],rates:{}},
+            unlocked:true,...berryAvailability(),capabilities:['farmPoints'],rates:{}},
             ...Array.from(farming.berryInventory,(_,berryType)=>({
-            id:`farm:${berryType}`,target:{kind:'farm'},berryType,unlocked:typeof farming.canAccess !== 'function' || farming.canAccess(),
+            id:`farm:${berryType}`,target:{kind:'farm'},berryType,unlocked:true,...berryAvailability(berryType),
             capabilities:['berries'],rates:{}}))]}),
         acquire(owner) { if (questOwner && questOwner !== owner) return false; questOwner=owner; return true; },
         apply(owner, objective) {

@@ -5,7 +5,7 @@
 // @description   Adds in stage resetting to the Battle Frontier that allows you to set a target stage and infinitely farm the Battle Frontier while being fully AFK. Also, gives the appropriate amount of Battle Points and Money without needing to fail and lose a stage.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.5.8
+// @version       1.5.9
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -82,7 +82,7 @@ class AutoBattleFrontier {
             inspect:() => ({status:this.questStatus || 'ready',reason:this.questReason || '',
                 progress:Math.max(0,total()-(this.questInitial ?? total())),nextWake:this.questRetry || 0,
                 activities:destinations().map(({town,content}) => ({id:`frontier:${town.name}`,target:{kind:'frontier',name:town.name,region:town.region},
-                    unlocked:town.isUnlocked() && content.isUnlocked(),reason:'Battle Frontier destination locked',capabilities:['frontier'],rates:{}}))}),
+                    status:'ready',unlocked:town.isUnlocked() && content.isUnlocked(),reason:'Battle Frontier destination locked',capabilities:['frontier'],rates:{}}))}),
             acquire:owner => {
                 if (!owner?.active || !owner.isCurrent() || registry.movementOwner !== owner || this.questOwner && this.questOwner !== owner || BattleFrontierRunner.started()) return false;
                 this.questOwner=owner;this.questInitial=total();this.questStatus='ready';this.questRetry=0;return true;

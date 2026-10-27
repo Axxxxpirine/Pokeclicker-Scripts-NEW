@@ -5,7 +5,7 @@
 // @description   Adaptive mining with smart tool targeting, full Cell Battery discharge, sale reserves and session rates. Compatible with Pokéclicker 0.10.26.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.2.1
+// @version       3.2.2
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -37,6 +37,7 @@ function registerQuestMineAdapter() {
     const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
     registry.adapters.mine={
         inspect:()=>({...questMineStatus,activities:[{id:'mine',target:{kind:'mine'},unlocked:App.game.underground.canAccess(),
+            status:typeof App.game.underground.generateMine === 'function' ? 'ready':'blocked',reason:'Native mine search unavailable',
             capabilities:['layers','items'],rates:{}}]}),
         acquire(owner) {if (questMineOwner && questMineOwner !== owner) return false;
             questMineOwner=owner;questMinePrevious=mineState;questMineApplied=false;clearTimeout(autoMineTimer);autoMineTimer=undefined;return true;},

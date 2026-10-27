@@ -4,7 +4,7 @@
 // @author        Axxxxpirine (Ideas: goldhaxx #431, Bowbylone/Dionisos94 #240, Sorrow #134)
 // @description   Bounded route, gym, dungeon and quest objectives with manual interruption, return, and Poké Mart budgets. Requires the fork's Enhanced Auto Clicker.
 // @license       GPL-3.0 License
-// @version       1.1.2
+// @version       1.1.3
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js
@@ -590,6 +590,7 @@ class AutoNavigator {
         if (!this.active || this.current?.kind !== 'dungeon' || App.game.gameState !== GameConstants.GameState.dungeon
             || DungeonRunner.dungeonID !== this.runId) return;
         const collection = ['zoneCapture','zoneShiny'].includes(this.settings.mode);
+        const encounters = this.externalOwner?.isCurrent() && this.externalObjective?.encounters === true;
         const c = this.clicker;
         const preferences = { autoDungeonEncounterMode:c.autoDungeonEncounterMode,
             autoDungeonChestMode:c.autoDungeonChestMode, autoDungeonLootTier:c.autoDungeonLootTier };
@@ -597,10 +598,14 @@ class AutoNavigator {
             // Use the existing traversal's full encounter/chest modes for a
             // collection objective. Restore preferences without persisting them.
             if (collection) Object.assign(c, {autoDungeonEncounterMode:true,autoDungeonChestMode:true,autoDungeonLootTier:0});
+            if (encounters) c.autoDungeonEncounterMode = true;
             this.own(()=>c.autoDungeon());
         }
         catch (e) { console.error('[Auto Navigation]',e);this.stop('Dungeon traversal failed'); }
-        finally { if (collection) Object.assign(c, preferences); }
+        finally {
+            if (collection) Object.assign(c, preferences);
+            else if (encounters && c.autoDungeonEncounterMode === true) c.autoDungeonEncounterMode = preferences.autoDungeonEncounterMode;
+        }
     }
 }
 

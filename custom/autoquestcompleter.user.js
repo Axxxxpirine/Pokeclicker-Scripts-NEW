@@ -5,7 +5,7 @@
 // @description   Removes the limit for the number of quests you can do at once and auto completes/starts new ones.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       2.1.3
+// @version       2.1.4
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -64,6 +64,8 @@ function initAutoQuest() {
             return true;
         },
     };
+    // The registry also covers a callback already queued before late acquisition.
+    function questControlled() { return questOwner || registry.questOwner?.isCurrent(); }
     function manualQuestControl() { questOwner?.onManual('Manual quest controls'); }
 
     createSettings();
@@ -71,6 +73,7 @@ function initAutoQuest() {
     /* Initialize quest handling */
 
     overrideMethods();
+    if (registry.questOwner?.isCurrent()) windowObject.AutoQuestRunner?.reconcileQuestOwnership();
     if (autoQuestEnabled) {
         refreshQuestSubscriptions();
     }
@@ -213,14 +216,14 @@ function initAutoQuest() {
     }
 
     function refreshQuestSubscriptions() {
-        if (questOwner) return;
+        if (questControlled()) return;
         // Dispose of old subscriptions
         clearQuestSubscriptions();
 
         // Subscribe to new quests
         const list = [...App.game.quests.questList()];
         list.forEach((quest) => {
-            if (questOwner || !App.game.quests.questList().includes(quest)) return;
+            if (questControlled() || !App.game.quests.questList().includes(quest)) return;
             const index = () => App.game.quests.questList().indexOf(quest);
             if (quest.isCompleted() && !quest.claimed() && !quest.autoComplete) {
                 // Claim quest if already done
@@ -228,7 +231,7 @@ function initAutoQuest() {
             } else if (!quest.isCompleted()){
                 // Subscribe to in-progress quests
                 const sub = quest.isCompleted.subscribe(() => {
-                    if (!questOwner && index() >= 0 && !quest.autoComplete && quest.inProgress() && quest.isCompleted()) {
+                    if (!questControlled() && index() >= 0 && !quest.autoComplete && quest.inProgress() && quest.isCompleted()) {
                         App.game.quests.claimQuest(index());
                         beginQuests();
                         sub.dispose();
@@ -251,7 +254,7 @@ function initAutoQuest() {
 
     function resetQuestResetTimeout() {
         clearTimeout(questResetTimeout);
-        if (!questOwner && autoQuestEnabled && questResetState) {
+        if (!questControlled() && autoQuestEnabled && questResetState) {
             questResetTimeout = setTimeout(() => {
                 requestQuestRefresh();
                 resetQuestResetTimeout();
@@ -260,7 +263,7 @@ function initAutoQuest() {
     }
 
     function requestQuestRefresh() {
-        if (questOwner || !autoQuestEnabled || refreshing || Date.now() - lastRefreshAttempt < 1000) return false;
+        if (questControlled() || !autoQuestEnabled || refreshing || Date.now() - lastRefreshAttempt < 1000) return false;
         const free = App.game.quests.freeRefresh();
         const cost = free ? 0 : App.game.quests.getRefreshCost().amount;
         const wallet = App.game.wallet.currencies[GameConstants.Currency.money]();
@@ -282,7 +285,7 @@ function initAutoQuest() {
     }
 
     function beginQuests(allowRefresh = true) {
-        if (questOwner || !autoQuestEnabled) return;
+        if (questControlled() || !autoQuestEnabled) return;
         var preferredQuests = [];
         var ignoredQuests = [];
         App.game.quests.incompleteQuests().forEach((quest) => {
@@ -316,7 +319,7 @@ function initAutoQuest() {
         const generateQuestListOld = App.game.quests.generateQuestList;
         App.game.quests.generateQuestList = function(...args) {
             const res = generateQuestListOld.apply(this, ...args);
-            if (!questOwner && autoQuestEnabled) {
+            if (!questControlled() && autoQuestEnabled) {
                 refreshQuestSubscriptions();
             }
             return res;

@@ -372,3 +372,14 @@ test('native navigation Start cancels its owning runner before shared-resource c
   assert.equal(f.w.PokeAutomationAdapters.clickerOwner,f.nav);assert.equal(f.player.route,1);
  }
 });
+test('autonomous runner uses real navigation across native route claims and next list',()=>{
+ const f=setup(),fs=require('node:fs'),path=require('node:path');let claims=0,begins=0;
+ const make=()=>({constructor:{name:'DefeatPokemonsQuest'},amount:1,route:1,region:0,pointsReward:10,initial:o(null),focus:f.stats.routeKills[0][1],claimed:o(false)});let list=[make()];
+ Object.assign(f.game.quests,{questList:()=>list,questSlots:()=>1,canStartNewQuest:()=>!list.some(q=>q.initial()!=null&&!q.claimed()),beginQuest(i){begins++;list[i].initial(list[i].focus());},claimQuest(i){claims++;assert.equal(list[i].focus()-list[i].initial(),1);list[i].claimed(true);list=[make()];}});
+ f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');const runner=f.w.AutoQuestRunner;
+ assert.equal(runner.start(),true);assert.equal(f.player.route,1);assert.equal(begins,1);
+ f.nav.deadline=Date.now()-1;f.stats.routeKills[0][1](1);f.nav.tick(true);runner.tick();runner.tick();
+ assert.equal(claims,1);assert.equal(begins,2);assert.equal(runner.active,true);assert.equal(f.nav.active,true);
+ f.stats.routeKills[0][1](2);f.nav.tick(true);runner.tick();assert.equal(claims,2);
+ f.w.MapHelper.moveToRoute(3,0);assert.equal(runner.active,false);runner.tick();assert.equal(claims,2);
+});

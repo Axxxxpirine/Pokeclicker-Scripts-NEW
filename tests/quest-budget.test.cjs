@@ -23,3 +23,9 @@ test('loaded reset option cannot refresh when quest automation is OFF',()=>{
  const f=setup({autoQuestEnabled:false,autoQuestResetState:true,autoQuestRefreshBudget:300});f.tick();assert.equal(f.calls,0);
  f.w.document.getElementById('select-autoQuestMaxQuests').value='1';f.w.document.getElementById('select-autoQuestMaxQuests').dispatchEvent(new f.w.Event('change'));assert.equal(f.calls,0);
 });
+test('quest lease suspends stale reset callbacks and resumes unchanged enabled settings',()=>{
+ const f=setup({autoQuestEnabled:true,autoQuestResetState:true,autoQuestRefreshBudget:300,autoQuestMaxQuests:3});const old=[...f.timers.values()][0];
+ const owner={active:true,isCurrent:()=>owner.active,onManual:()=>{owner.active=false;adapter.release(owner);}};const adapter=f.w.PokeAutomationAdapters.adapters.quests;
+ assert.equal(adapter.inspect().slots,3);assert.equal(adapter.acquire(owner),true);assert.equal(f.timers.size,0);old();assert.equal(f.calls,0);assert.equal(f.timers.size,0);
+ owner.active=false;adapter.release(owner);assert.equal(f.timers.size,1);f.tick();assert.equal(f.calls,1);
+});

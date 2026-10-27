@@ -5,7 +5,7 @@
 // @description   Adaptive mining with smart tool targeting, full Cell Battery discharge, sale reserves and session rates. Compatible with Pokéclicker 0.10.26.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.2.0
+// @version       3.2.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -31,7 +31,40 @@ var autoMineSellReserves = loadAutoMineReserves();
 var autoMineSession;
 var autoMineLastRateUpdate = -Infinity;
 
+var questMineOwner=null, questMinePrevious, questMineApplied=false, questMineStatus={status:'ready',progress:0,nextWake:0};
+function registerQuestMineAdapter() {
+    const w=!App.isUsingClient ? unsafeWindow : window;
+    const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    registry.adapters.mine={
+        inspect:()=>({...questMineStatus,activities:[{id:'mine',target:{kind:'mine'},unlocked:App.game.underground.canAccess(),
+            status:typeof App.game.underground.generateMine === 'function' ? 'ready':'blocked',reason:'Native mine search unavailable',
+            capabilities:['layers','items'],rates:{}}]}),
+        acquire(owner) {if (questMineOwner && questMineOwner !== owner) return false;
+            questMineOwner=owner;questMinePrevious=mineState;questMineApplied=false;clearTimeout(autoMineTimer);autoMineTimer=undefined;return true;},
+        apply(owner) {
+            if (owner !== questMineOwner || !owner?.active || !owner.isCurrent()) return false;
+            if (questMineApplied && mineState !== true) {owner.onManual('Manual mining state');return false;}
+            mineState=true;questMineApplied=true;
+            const underground=App.game.underground;
+            if (!underground.canAccess()) {questMineStatus={status:'blocked',reason:'Underground locked',nextWake:Date.now()+1000};return true;}
+            // Native generateMine initializes its own discovery timer and rewards.
+            // Never replace an unfinished or currently searching mine.
+            if (!underground.mine || underground.mine.completed || underground.mine.itemsFound >= underground.mine.itemsBuried) {
+                if (underground.battery?.toJSON?.()?.activeDischargeID != null) {autoMineWait('Battery discharging — waiting for animation',100);return true;}
+                if (typeof underground.generateMine !== 'function') {questMineStatus={status:'blocked',reason:'Native mine search unavailable'};return true;}
+                underground.generateMine(underground.autoSearchMineType);
+            }
+            doAutoMine();return true;
+        },
+        release(owner,reason='') {if (owner !== questMineOwner) return;
+            if (questMineApplied && mineState === true) mineState=questMinePrevious;
+            questMineOwner=null;questMineStatus={status:'ready',progress:0,nextWake:0};
+            if (!/manual/i.test(reason)) updateAutoMineTimer();}
+    };
+}
+
 function initAutoMine() {
+    registerQuestMineAdapter();
     if (document.getElementById('auto-mine-start')) {
         return;
     }
@@ -45,7 +78,7 @@ function initAutoMine() {
         <div id="auto-mine-status" role="status">Stopped</div>
         <div id="auto-mine-warning" class="text-warning"></div>
         <div id="auto-mine-rates" class="small"></div>
-        <small>Session totals include manual mining and helpers, using the game's treasure-found counter. Adaptive speed: up to 20 tool actions/s. Bombs are never used. Auto Battery needs Auto Mine ON.</small>
+        <small>Session totals include manual mining and helpers, using the game's treasure-found counter. Adaptive speed: up to 20 tool actions/s. Survey detects hidden treasures. Bombs are used only when they cannot finish any treasure, and never during Auto Quests. Auto Battery needs Auto Mine ON.</small>
         <details class="mt-2"><summary>Sale reserves</summary>
             <div class="d-flex flex-wrap align-items-center" style="gap: .5rem">
                 <label>Default reserve <input id="auto-mine-reserve-default" type="number" min="0" max="1000000000" step="1" required style="width: 7rem"></label>
@@ -60,6 +93,10 @@ function initAutoMine() {
     document.getElementById('auto-mine-battery').addEventListener('click', toggleAutoMineBattery);
     document.getElementById('auto-sell-treasure').addEventListener('click', autoSellTreasure);
     initAutoMineReserveControls();
+    for (const element of controls.querySelectorAll('button,input,select')) {
+        if (element.id === 'auto-mine-start') continue;
+        for (const event of ['click','change']) element.addEventListener(event,()=>questMineOwner?.onManual('Manual mining settings'),true);
+    }
     layersMined = App.game.statistics.undergroundLayersMined();
     if (mineState) startAutoMineSession();
     updateAutoMineDisplay(mineState ? 'Ready' : 'Stopped', true);
@@ -76,7 +113,7 @@ function updateAutoMineTimer() {
 
 function runAutoMine() {
     autoMineTimer = undefined;
-    if (!mineState) return;
+    if (!mineState || questMineOwner) return;
     try {
         const delay = doAutoMine();
         // One action per callback, no catch-up bursts after a suspended tab.
@@ -89,7 +126,9 @@ function runAutoMine() {
 }
 
 function startAutoMine() {
-    setAutoMineState(!mineState);
+    const requested=!mineState;
+    questMineOwner?.onManual('Manual mining control');
+    setAutoMineState(requested);
 }
 
 function setAutoMineState(enabled) {
@@ -118,7 +157,7 @@ function doAutoMine() {
     if (!mineState) return autoMineWait('Stopped');
     if (!underground.canAccess()) return autoMineWait('Waiting for Underground access');
     const mined = App.game.statistics.undergroundLayersMined();
-    if (sellTreasureState && autoMineReservesValid && autoMineReserveInputsValid && layersMined !== undefined && mined > layersMined) {
+    if (!questMineOwner && sellTreasureState && autoMineReservesValid && autoMineReserveInputsValid && layersMined !== undefined && mined > layersMined) {
         for (const item of UndergroundItems.list) {
             if (item.isSellable() && !item.sellLocked()) {
                 const stock = player.itemList[item.itemName]?.();
@@ -150,11 +189,13 @@ function doAutoMine() {
         return autoMineWait('Battery discharging — waiting for animation', 100);
     }
     const tools = underground.tools;
-    if (![UndergroundToolType.Chisel, UndergroundToolType.Hammer].some(type => tools.getTool(type)?.canUseTool())) {
-        return autoMineWait('Tools recovering', autoMineRecoveryDelay(tools));
-    }
     const action = chooseAutoMineAction(mine, tools);
-    if (!action) return autoMineWait('No covered treasure target — waiting for the mine to update');
+    if (!action) {
+        if (![UndergroundToolType.Chisel, UndergroundToolType.Hammer].some(type => tools.getTool(type)?.canUseTool())) {
+            return autoMineWait('Tools recovering — waiting for a usable, safe action', autoMineRecoveryDelay(tools));
+        }
+        return autoMineWait('No covered treasure target — waiting for the mine to update');
+    }
     const previousTool = tools.selectedToolType;
     try {
         tools.selectedToolType = action.type;
@@ -163,15 +204,17 @@ function doAutoMine() {
     } finally {
         tools.selectedToolType = previousTool;
     }
-    return autoMineWait('Mining', 50);
+    return autoMineWait(action.type === UndergroundToolType.Survey ? 'Surveying hidden treasures'
+        : action.type === UndergroundToolType.Bomb ? 'Bombing — no treasure can be completed by this blast' : 'Mining', 50);
 }
 
 function autoMineRecoveryDelay(tools) {
-    const delays = [UndergroundToolType.Chisel, UndergroundToolType.Hammer].map(type => {
+    const delays = [UndergroundToolType.Chisel, UndergroundToolType.Hammer, UndergroundToolType.Bomb, UndergroundToolType.Survey].map(type => {
         const tool = tools.getTool(type);
         const rate = tool?.restoreRatePerSecond?.();
         const missing = tool?.durabilityPerUse - tool?.durability;
-        return rate > 0 && Number.isFinite(missing) ? Math.ceil(1000 * missing / rate) : 1000;
+        // Ready but ineligible tools must not cause a tight polling loop.
+        return rate > 0 && Number.isFinite(missing) && missing > 0 ? Math.ceil(1000 * missing / rate) : 1000;
     });
     return Math.max(50, Math.min(1000, ...delays));
 }
@@ -181,13 +224,39 @@ function chooseAutoMineAction(mine, tools) {
     if (!Array.isArray(grid) || !Number.isInteger(width) || !Number.isInteger(height)
         || width <= 0 || height <= 0 || width * height !== grid.length) return null;
     const remaining = new Map();
+    const bombHitsToFinish = new Map();
+    const visible = new Set();
     const targets = [];
     grid.forEach((tile, index) => {
+        if (tile.reward && tile.layerDepth === 0) visible.add(tile.reward.rewardID);
         if (!tile.reward || tile.reward.rewarded || tile.layerDepth <= 0) return;
         const id = tile.reward.rewardID;
         remaining.set(id, (remaining.get(id) || 0) + tile.layerDepth);
+        bombHitsToFinish.set(id, (bombHitsToFinish.get(id) || 0) + Math.ceil(tile.layerDepth / 2));
         targets.push(index);
     });
+    if (!targets.length) return null;
+    const hidden = new Set([...remaining.keys()].filter(id => !visible.has(id)));
+    if (hidden.size && tools.getTool(UndergroundToolType.Survey)?.canUseTool()
+        && !grid.some(tile => tile.survey >= 0 && hidden.has(tile.surveyRewardID))) {
+        return { type: UndergroundToolType.Survey, index: targets[0] };
+    }
+    // Quest ownership forbids Bombs even when standalone mining proves a blast safe.
+    if (!questMineOwner && tools.getTool(UndergroundToolType.Bomb)?.canUseTool()) {
+        const oakItems = App.game.oakItems;
+        const explosiveCharge = typeof OakItemType !== 'undefined' ? OakItemType.Explosive_Charge : undefined;
+        if (explosiveCharge !== undefined && typeof oakItems?.isActive === 'function') {
+            const extraHits = oakItems.isActive(explosiveCharge) ? oakItems.calculateBonus?.(explosiveCharge) : 0;
+            // Native bombs hit random coordinates WITH replacement. Even deep tiles
+            // can be hit repeatedly. Require more hits to finish EVERY treasure
+            // than the entire blast can deliver, including the Oak item bonus.
+            const hits = Math.ceil(10 + extraHits);
+            if (Number.isFinite(extraHits) && extraHits >= 0
+                && [...bombHitsToFinish.values()].every(required => required > hits)) {
+                return { type: UndergroundToolType.Bomb, index: targets[0] };
+            }
+        }
+    }
     let best = null;
     for (const type of [UndergroundToolType.Chisel, UndergroundToolType.Hammer]) {
         const tool = tools.getTool(type);
@@ -233,6 +302,7 @@ function chooseAutoMineAction(mine, tools) {
 }
 
 function autoMineWait(status, delay = 1000) {
+    if (questMineOwner) questMineStatus={status:'waiting',reason:status,nextWake:Date.now()+delay,progress:App.game.statistics.undergroundLayersMined()};
     updateAutoMineDisplay(status);
     return delay;
 }
@@ -341,6 +411,7 @@ function initAutoMineReserveControls() {
 }
 
 function toggleAutoMineBattery(event) {
+    questMineOwner?.onManual('Manual mining settings');
     autoMineBatteryState = !autoMineBatteryState;
     event.currentTarget.classList.replace(...(autoMineBatteryState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
     event.currentTarget.textContent = `Auto Battery [${autoMineBatteryState ? 'ON' : 'OFF'}]`;
@@ -349,6 +420,7 @@ function toggleAutoMineBattery(event) {
 }
 
 function autoSellTreasure(event) {
+    questMineOwner?.onManual('Manual mining settings');
     sellTreasureState = !sellTreasureState;
     event.currentTarget.classList.replace(...(sellTreasureState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
     event.currentTarget.textContent = `Auto Sell Treasure [${sellTreasureState ? 'ON' : 'OFF'}]`;

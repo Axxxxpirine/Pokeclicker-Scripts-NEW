@@ -5,7 +5,7 @@
 // @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture, a stop timer, manual mutation plans and bounded pre-maturity Rich Mulch share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.1
+// @version       1.9.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -69,12 +69,70 @@ function initAutoFarm() {
     FarmController.selectedBerry(plantSelected);
     FarmController.navigateIndex(Math.floor(plantSelected / FarmController.BERRIES_PER_PAGE));
 
+    let questOwner = null, questStatus = {status:'ready',reason:'',progress:0,nextWake:0};
+    const questWindow = !App.isUsingClient ? unsafeWindow : window;
+    const registry = questWindow.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    const validQuestOwner = owner => owner === questOwner && owner?.active && owner.isCurrent();
+    // Availability is objective-specific and read fresh, never latched to the last apply.
+    const berryAvailability = berryType => {
+        if (typeof farming.canAccess === 'function' && !farming.canAccess())
+            return {status:'blocked',reason:'Farm access locked'};
+        const growing = farming.plotList.some((plot,index) => plot?.isUnlocked && !plot.isSafeLocked
+            && !validBerry(mutationPlan[index]) && plot.berry !== -1
+            && (berryType == null || plot.berry === berryType));
+        const stock = berryType == null ? farming.berryInventory.some(n=>n() > 0)
+            : farming.berryInventory[berryType]?.() > 0;
+        return growing || stock ? {status:growing ? 'waiting':'ready'}
+            : {status:'blocked',reason:'Requested berry stock absent, no supported native acquisition available'};
+    };
+    registry.adapters.farm = {
+        inspect:() => ({...questStatus,activities:[{id:'farm:points',target:{kind:'farm'},
+            unlocked:true,...berryAvailability(),capabilities:['farmPoints'],rates:{}},
+            ...Array.from(farming.berryInventory,(_,berryType)=>({
+            id:`farm:${berryType}`,target:{kind:'farm'},berryType,unlocked:true,...berryAvailability(berryType),
+            capabilities:['berries'],rates:{}}))]}),
+        acquire(owner) { if (questOwner && questOwner !== owner) return false; questOwner=owner; return true; },
+        apply(owner, objective) {
+            if (!validQuestOwner(owner)) return false;
+            if (typeof farming.canAccess === 'function' && !farming.canAccess()) {
+                questStatus={status:'blocked',reason:'Farm access locked',nextWake:Date.now()+1000};return true;
+            }
+            const berry = validBerry(objective.berryType) ? objective.berryType
+                : farming.berryInventory.findIndex(stock=>stock() > 0);
+            let progress=0, growing=false;
+            for (let index=0; index<plotCount; index++) {
+                const plot=farming.plotList[index];
+                // Designated mutation plots remain commitments even while the mode is OFF.
+                if (!plot || !plot.isUnlocked || plot.isSafeLocked || validBerry(mutationPlan[index])) continue;
+                if (plot.berry !== -1) {
+                    if ((objective.berryType == null || plot.berry === berry) && typeof PlotStage !== 'undefined' && plot.stage?.() === PlotStage.Berry) {
+                        farming.harvest(index);progress++;
+                    } else if (objective.berryType == null || plot.berry === berry) growing=true;
+                }
+                if (plot.berry === -1 && validBerry(berry) && farming.berryInventory[berry]() > (planState ? planReserve : 0)) {
+                    farming.plant(index,berry);growing=true;
+                }
+            }
+            const missing=!validBerry(berry) || !(farming.berryInventory[berry]() > 0);
+            questStatus={status:missing && !growing ? 'blocked':'waiting',progress,
+                reason:missing && !growing ? 'Requested berry stock absent, no supported native acquisition available':'Waiting for natural berry growth',nextWake:Date.now()+1000};
+            return true;
+        },
+        release(owner) {if (questOwner === owner) {questOwner=null;questStatus={status:'ready',progress:0,nextWake:0};}}
+    };
     createMenu();
+    // All explicit farm controls yield ownership before their existing handlers run.
+    for (const element of document.querySelectorAll('#auto-farm-controls button,#auto-farm-controls input,#auto-farm-controls select')) {
+        if (element.tagName === 'BUTTON' || element.tagName === 'INPUT' || element.tagName === 'SELECT') {
+            for (const event of ['click','change']) element.addEventListener(event,()=>questOwner?.onManual('Manual farm control'),true);
+        }
+    }
     checkFarmDeadline();
     toggleFarmLoop();
 
     function createMenu() {
         var elemAF = document.createElement("div");
+        elemAF.id = "auto-farm-controls";
         var divMenu1 = document.createElement("div");
         var divMenu2 = document.createElement("div");
         var divMenu3 = document.createElement("div");
@@ -332,6 +390,7 @@ function initAutoFarm() {
     }
 
     function autoFarmTick() {
+        if (questOwner) return;
         // Check wall-clock time before any action, including after sleep or reload.
         if (checkFarmDeadline()) return;
         if (catchState) {

@@ -279,3 +279,156 @@ test('missing departure dock data fails closed only for travel to another region
  assert.equal(f.nav.move({kind:'route',number:1,region:0}),false);
  assert.equal(f.nav.move({kind:'route',number:29,region:1}),true);
 });
+
+test('external objectives share ownership, budgets and ephemeral preferences',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;
+ const owner={active:true,isCurrent(){return this.active;},onManual(){this.active=false;a.release(this,'Manual travel');}};
+ const saved=f.w.localStorage.getItem('autoNavigationSettings');
+ assert.equal(a.acquire(owner),true);assert.equal(a.acquire(owner),true);
+ assert.equal(a.acquire({active:true,isCurrent:()=>true}),false);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:1,region:0},count:2}),true);
+ assert.equal(f.player.route,1);assert.equal(f.w.localStorage.getItem('autoNavigationSettings'),saved);
+ f.stats.routeKills[0][1](2);f.nav.tick(true);assert.equal(a.inspect().status,'done');assert.equal(f.nav.active,true);
+ const spent=f.nav.spent;assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.nav.spent,spent);
+ f.w.MapHelper.moveToRoute(1,0);assert.equal(owner.active,false);assert.equal(f.nav.active,false);assert.equal(f.player.route,1);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),false);
+});
+test('external pending objective never moves during capture',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;const owner={active:true,isCurrent:()=>true,onManual(){}};
+ a.acquire(owner);f.w.Battle.catching=()=>true;
+ a.apply(owner,{target:{kind:'route',number:3,region:0},count:1});assert.equal(f.player.route,0);assert.equal(a.inspect().status,'waiting');
+ f.w.Battle.catching=()=>false;f.nav.tick(true);assert.equal(f.player.route,3);
+});
+test('external release restores only settings still owned and rejects expired sessions',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;const owner={active:true,isCurrent(){return this.active;},onManual(){}};
+ f.eac.autoClickState(true);a.acquire(owner);a.apply(owner,{target:{kind:'route',number:1,region:0},count:2});
+ f.eac.autoClickState(false);owner.active=false;f.nav.tick(true);
+ assert.equal(f.eac.autoClickState(),false);assert.equal(f.nav.active,false);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+});
+test('clicker exports a load independent adapter and manual control invalidates its token',()=>{
+ const f=setup();const fs=require('node:fs');const source=fs.readFileSync(require('node:path').join(__dirname,'../enhancedautoclicker.user.js'),'utf8');
+ const method=source.match(/static registerAutomationAdapter\(\) \{([\s\S]*?)\n    \}/);
+ assert.ok(method);f.run('EnhancedAutoClicker.registerAutomationAdapter=function(){'+method[1]+'};EnhancedAutoClicker.registerAutomationAdapter()');
+ const a=f.w.PokeAutomationAdapters.adapters.clicker;let canceled=false;const owner={active:true,isCurrent(){return this.active;},onManual(){canceled=true;this.active=false;a.release(this,'manual');}};
+ assert.equal(a.acquire(owner),true);assert.equal(a.apply(owner,{enabled:true}),true);assert.equal(f.eac.autoClickState(),true);
+ f.eac.toggleAutoClick();assert.equal(canceled,true);assert.equal(f.eac.autoClickState(),false);
+});
+test('runner and navigation preserve shared registry in either initialization order and reload OFF',()=>{
+ const fs=require('node:fs'),path=require('node:path');const source=fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8');
+ const f=setup();const registry=f.w.PokeAutomationAdapters;
+ f.run(source);f.run('AutoQuestRunner.init()');assert.equal(f.w.PokeAutomationAdapters,registry);
+ const r=f.w.AutoQuestRunner;assert.equal(r.start(),true);assert.equal(r.apply('navigation',{target:{kind:'route',number:1,region:0},count:1}),true);r.stop();
+ const g=setup();delete g.w.PokeAutomationAdapters;g.run(source);g.run('AutoQuestRunner.init()');const early=g.w.PokeAutomationAdapters;
+ g.nav.registerAdapter();assert.equal(g.w.PokeAutomationAdapters,early);assert.equal(g.w.AutoQuestRunner.active,false);
+});
+function installNativeClickerControls(f) {
+ const fs=require('node:fs'),path=require('node:path');const source=fs.readFileSync(path.join(__dirname,'../enhancedautoclicker.user.js'),'utf8');
+ for(const name of ['toggleAutoClick','toggleAutoGym','toggleAutoDungeon','registerAutomationAdapter']) {
+  const match=source.match(new RegExp('static '+name+'\\(([^)]*)\\) \\{([\\s\\S]*?)\\n    \\}'));
+  assert.ok(match,name);f.run('EnhancedAutoClicker.'+name+'=function('+match[1]+'){'+match[2]+'}');
+ }
+ for(const id of ['auto-click-start','auto-gym-start','auto-dungeon-start']) {const button=f.w.document.createElement('button');button.id=id;f.w.document.body.append(button);}
+ f.eac.toggleAutoClickerLoop=()=>{};f.eac.canStartAutoGym=()=>true;f.eac.canStartAutoDungeon=()=>true;
+ f.eac.registerAutomationAdapter();return f.w.PokeAutomationAdapters.adapters.clicker;
+}
+function tokenFor(...adapters) {return {active:true,isCurrent(){return this.active;},onManual(reason){this.active=false;for(const a of adapters)a.release(this,reason);}};}
+test('manual travel invalidates idle acquired navigation and failed first objectives',()=>{
+ for(const invalid of [false,true]) {const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation,owner=tokenFor(a);a.acquire(owner);
+  if(invalid)assert.equal(a.apply(owner,{target:{kind:'route',number:2,region:0},count:1}),false);
+  f.w.MapHelper.moveToRoute(3,0);assert.equal(owner.active,false);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+  assert.equal(a.apply(owner,{target:{kind:'route',number:1,region:0},count:1}),false);assert.equal(f.player.route,3);
+ }
+});
+test('clicker and movement reservations are symmetric and include standalone navigation',()=>{
+ const f=setup(),clicker=installNativeClickerControls(f),nav=f.w.PokeAutomationAdapters.adapters.navigation;
+ const a=tokenFor(clicker),b=tokenFor(nav);assert.equal(clicker.acquire(a),true);assert.equal(nav.acquire(b),false);assert.equal(f.nav.start(settings),false);
+ clicker.release(a);assert.equal(nav.acquire(b),true);assert.equal(clicker.acquire(a),false);assert.equal(clicker.acquire(b),true);
+ nav.release(b,'Stopped');assert.equal(nav.acquire(a),false);clicker.release(b);assert.equal(f.nav.start(settings),true);
+ assert.equal(clicker.acquire(a),false);f.nav.stop();assert.equal(clicker.acquire(a),true);clicker.release(a);
+});
+test('native clicker disable preserves and conditionally restores gym and dungeon cascades',()=>{
+ for(const mode of ['Gym','Dungeon']) {const f=setup(),a=installNativeClickerControls(f),owner=tokenFor(a);
+  f.eac['toggleAuto'+mode]();assert.equal(f.eac.autoClickState(),true);assert.equal(f.eac['auto'+mode+'State'](),true);
+  const stored=['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key));
+  assert.equal(a.acquire(owner),true);assert.equal(a.apply(owner,{enabled:false}),true);
+  assert.equal(f.eac['auto'+mode+'State'](),false);assert.deepEqual(['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key)),stored);
+  a.release(owner);assert.equal(f.eac.autoClickState(),true);assert.equal(f.eac['auto'+mode+'State'](),true);
+  assert.deepEqual(['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key)),stored);
+ }
+});
+test('manual native spending control during temporary disable retains user choice',()=>{
+ const f=setup(),a=installNativeClickerControls(f),owner=tokenFor(a);f.eac.toggleAutoGym();a.acquire(owner);a.apply(owner,{enabled:false});
+ f.eac.toggleAutoDungeon();assert.equal(owner.active,false);assert.equal(f.eac.autoDungeonState(),true);assert.equal(f.eac.autoGymState(),false);
+ assert.equal(f.w.localStorage.getItem('autoDungeonState'),'true');
+});
+test('native navigation Start cancels its owning runner before shared-resource checks',()=>{
+ for(const names of [['navigation'],['navigation','clicker'],['clicker','navigation']]) {
+  const f=setup();installNativeClickerControls(f);
+  const fs=require('node:fs'),path=require('node:path');f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');
+  const runner=f.w.AutoQuestRunner;assert.equal(runner.start(names),true);const owner=runner.owner;
+  assert.equal(runner.apply('navigation',{target:{kind:'route',number:3,region:0},count:2}),true);
+  assert.equal(f.nav.start(settings),true);assert.equal(runner.active,false);assert.equal(owner.isCurrent(),false);
+  assert.equal(f.nav.active,true);assert.equal(f.nav.externalOwner,null);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+  assert.equal(f.w.PokeAutomationAdapters.clickerOwner,f.nav);assert.equal(f.player.route,1);
+ }
+});
+test('autonomous runner uses real navigation across native route claims and next list',()=>{
+ const f=setup(),fs=require('node:fs'),path=require('node:path');let claims=0,begins=0;
+ const make=()=>({constructor:{name:'DefeatPokemonsQuest'},amount:1,route:1,region:0,pointsReward:10,initial:o(null),focus:f.stats.routeKills[0][1],claimed:o(false)});let list=[make()];
+ Object.assign(f.game.quests,{questList:()=>list,questSlots:()=>1,canStartNewQuest:()=>!list.some(q=>q.initial()!=null&&!q.claimed()),beginQuest(i){begins++;list[i].initial(list[i].focus());},claimQuest(i){claims++;assert.equal(list[i].focus()-list[i].initial(),1);list[i].claimed(true);list=[make()];}});
+ f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');const runner=f.w.AutoQuestRunner;
+ assert.equal(runner.start(),true);assert.equal(f.player.route,1);assert.equal(begins,1);
+ f.nav.deadline=Date.now()-1;f.stats.routeKills[0][1](1);f.nav.tick(true);runner.tick();runner.tick();
+ assert.equal(claims,1);assert.equal(begins,2);assert.equal(runner.active,true);assert.equal(f.nav.active,true);
+ f.stats.routeKills[0][1](2);f.nav.tick(true);runner.tick();assert.equal(claims,2);
+ f.w.MapHelper.moveToRoute(3,0);assert.equal(runner.active,false);runner.tick();assert.equal(claims,2);
+});
+test('owned town transit waits for capture, suspends objective and resumes same native session',()=>{
+ const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation,owner=tokenFor(a);a.acquire(owner);
+ a.apply(owner,{target:{kind:'route',number:1,region:0},count:1,session:settings});const spent=f.nav.spent;
+ f.w.Battle.catching=()=>true;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),false);assert.equal(f.player.route,1);
+ f.w.Battle.catching=()=>false;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),true);assert.equal(f.player.route,0);f.nav.tick(true);assert.equal(f.player.town.name,'Home');assert.equal(f.nav.externalObjective,null);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.player.route,3);assert.equal(f.nav.spent,spent);
+ owner.active=false;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),false);assert.equal(f.player.route,3);
+});
+test('runner uses real owned native transit purchase and route resume without standalone shop loop',()=>{
+ const fs=require('node:fs'),path=require('node:path'),f=setup();f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');const r=f.w.AutoQuestRunner;
+ const ball={quantity:o(0)};f.game.pokeballs.pokeballs=[ball];const item={name:'Pokeball',type:0,currency:0,isAvailable:()=>true,isSoldOut:()=>false,totalPrice:n=>n*10,buy:n=>{ball.quantity(ball.quantity()+n);f.game.wallet.currencies[0](f.game.wallet.currencies[0]()-n*10);}};
+ f.towns.Home.content=[{parent:f.towns.Home,items:[item],isUnlocked:()=>true}];
+ const activity={id:'route:0:1',target:{kind:'route',number:1,region:0},unlocked:true,capabilities:['ball'],rates:{ball:1}};
+ const s={epoch:1,quests:[{id:'q',type:'UsePokeballQuest',target:{pokeball:0},remaining:2,known:true,active:true}],resources:{money:100,balls:[0]},activities:[activity],rates:{},commitments:{}};
+ f.w.MapHelper.moveToRoute(3,0);assert.equal(r.start(),true);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,0);assert.equal(ball.quantity(),0);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(ball.quantity(),2);s.resources.balls[0]=2;r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,1);assert.equal(f.nav.settings.mode,'routes');assert.equal(f.game.wallet.currencies[0](),80);r.stop();
+});
+test('owned Frontier suspension clears pending movement and survives native Frontier state until resumed',()=>{
+ const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation;
+ const t={active:true,isCurrent(){return this.active;},onManual(){this.active=false;a.release(this,'Manual');}};
+ assert.equal(a.acquire(t),true);assert.equal(a.apply(t,{target:{kind:'route',number:1,region:0},count:1}),true);
+ assert.equal(a.suspend(t),true);f.game.gameState=f.state.battleFrontier;f.nav.tick(true);assert.equal(t.active,true);assert.equal(f.nav.pendingExternal,null);
+ f.game.gameState=f.state.town;assert.equal(a.apply(t,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.player.route,3);
+ t.active=false;a.release(t);assert.equal(a.suspend(t),false);
+});
+
+test('external Shadow encounter traversal is scoped to its owned objective and restores preferences', () => {
+ const f = setup();
+ const adapter = f.w.PokeAutomationAdapters.adapters.navigation;
+ const owner = {active:true,isCurrent(){return this.active;},onManual(){this.active=false;adapter.release(this);}};
+ assert.equal(adapter.acquire(owner), true);
+ f.eac.autoDungeonLootTier = 3;
+ let seen;
+ f.eac.autoDungeon = () => {seen = [f.eac.autoDungeonEncounterMode,f.eac.autoDungeonChestMode,f.eac.autoDungeonLootTier];};
+ adapter.apply(owner, {target:{kind:'dungeon',name:'Forest',region:0},count:1,encounters:true,session:settings});
+ f.nav.explore();
+ assert.deepEqual(seen, [true,false,3]);
+ assert.equal(f.eac.autoDungeonEncounterMode, false);
+ assert.equal(f.w.localStorage.getItem('autoDungeonEncounterMode'), null);
+ f.nav.externalObjective.encounters = false;
+ f.nav.explore();
+ assert.deepEqual(seen, [false,false,3]);
+ f.nav.externalObjective.encounters = true;
+ f.eac.autoDungeon = () => {throw new Error('path failed');};
+ const error = f.w.console.error;
+ f.w.console.error = () => {};
+ try {f.nav.explore();} finally {f.w.console.error = error;}
+ assert.equal(owner.active, false);
+ assert.equal(f.eac.autoDungeonEncounterMode, false);
+});

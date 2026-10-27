@@ -77,13 +77,16 @@ function initAutoFarm() {
     const berryAvailability = berryType => {
         if (typeof farming.canAccess === 'function' && !farming.canAccess())
             return {status:'blocked',reason:'Farm access locked'};
-        const growing = farming.plotList.some((plot,index) => plot?.isUnlocked && !plot.isSafeLocked
-            && !validBerry(mutationPlan[index]) && plot.berry !== -1
-            && (berryType == null || plot.berry === berryType));
-        const stock = berryType == null ? farming.berryInventory.some(n=>n() > 0)
-            : farming.berryInventory[berryType]?.() > 0;
-        return growing || stock ? {status:growing ? 'waiting':'ready'}
-            : {status:'blocked',reason:'Requested berry stock absent, no supported native acquisition available'};
+        const usable = farming.plotList.slice(0,plotCount).filter((plot,index) => plot?.isUnlocked
+            && !plot.isSafeLocked && !validBerry(mutationPlan[index]));
+        const growing = usable.some(plot => plot.berry !== -1 && (berryType == null || plot.berry === berryType));
+        const reserve = planState ? planReserve : 0;
+        const stock = berryType == null ? farming.berryInventory.some(n=>n() > reserve)
+            : farming.berryInventory[berryType]?.() > reserve;
+        if (growing) return {status:'waiting',reason:'Waiting for natural berry growth'};
+        if (!stock) return {status:'blocked',reason:'Requested berry stock absent, no supported native acquisition available'};
+        return usable.some(plot=>plot.berry === -1) ? {status:'ready'}
+            : {status:'blocked',reason:'No usable farm plot for the requested berry'};
     };
     registry.adapters.farm = {
         inspect:() => ({...questStatus,activities:[{id:'farm:points',target:{kind:'farm'},
@@ -99,7 +102,7 @@ function initAutoFarm() {
             }
             const berry = validBerry(objective.berryType) ? objective.berryType
                 : farming.berryInventory.findIndex(stock=>stock() > 0);
-            let progress=0, growing=false;
+            let progress=0;
             for (let index=0; index<plotCount; index++) {
                 const plot=farming.plotList[index];
                 // Designated mutation plots remain commitments even while the mode is OFF.
@@ -107,15 +110,15 @@ function initAutoFarm() {
                 if (plot.berry !== -1) {
                     if ((objective.berryType == null || plot.berry === berry) && typeof PlotStage !== 'undefined' && plot.stage?.() === PlotStage.Berry) {
                         farming.harvest(index);progress++;
-                    } else if (objective.berryType == null || plot.berry === berry) growing=true;
+                    }
                 }
                 if (plot.berry === -1 && validBerry(berry) && farming.berryInventory[berry]() > (planState ? planReserve : 0)) {
-                    farming.plant(index,berry);growing=true;
+                    farming.plant(index,berry);
                 }
             }
-            const missing=!validBerry(berry) || !(farming.berryInventory[berry]() > 0);
-            questStatus={status:missing && !growing ? 'blocked':'waiting',progress,
-                reason:missing && !growing ? 'Requested berry stock absent, no supported native acquisition available':'Waiting for natural berry growth',nextWake:Date.now()+1000};
+            const availability=berryAvailability(objective.berryType);
+            questStatus={...availability,status:availability.status === 'blocked' ? 'blocked':'waiting',progress,
+                reason:availability.reason || 'Waiting for natural berry growth',nextWake:Date.now()+1000};
             return true;
         },
         release(owner) {if (questOwner === owner) {questOwner=null;questStatus={status:'ready',progress:0,nextWake:0};}}

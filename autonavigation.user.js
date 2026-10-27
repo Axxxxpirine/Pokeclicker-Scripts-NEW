@@ -465,7 +465,7 @@ class AutoNavigator {
                 const w = !App.isUsingClient ? unsafeWindow : window;
                 w.PokeAutomationAdapters.adapters.navigation.release(this.externalOwner, 'Expired session'); return;
             }
-            if (Date.now() >= this.deadline) { this.stop('Session time limit'); return; }
+            if (!this.externalOwner && Date.now() >= this.deadline) { this.stop('Session time limit'); return; }
             const state = App.game.gameState, gs = GameConstants.GameState;
             if (![gs.town,gs.fighting,gs.dungeon,gs.gym].includes(state)) { this.stop('Other activity started',false); return; }
             if (DungeonGuides.hired()) { this.stop('Dungeon Guides started',false); return; }

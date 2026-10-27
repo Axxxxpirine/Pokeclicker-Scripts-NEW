@@ -136,7 +136,7 @@ class AutoQuestRunner {
     static activityRate(quest, activity) {
         if (!this.activityMatches(quest,activity)) return 0;
         const metric = this.questMetrics[quest.type];
-        const rate = Number(activity.rates?.[metric]);
+        const rate = Number(activity.rates?.[`${metric}:${JSON.stringify(quest.target)}`] ?? activity.rates?.[metric]);
         return Number.isFinite(rate) && rate > 0 ? rate : 0;
     }
     static buildCandidates(snapshot) {
@@ -220,7 +220,101 @@ class AutoQuestRunner {
                 this.acquired.push({name, adapter});
             }
         } catch (error) { this.stop(error.message); return false; }
-        this.render(); return true;
+        this.claimAttempts = new WeakSet(); this.executing = null; this.currentPlan = null;
+        this.observation = null; this.observedRates = {}; this.rateSamples = {};
+        if (App.game.quests?.questList) {
+            const quests = registry.adapters.quests;
+            if (quests && !this.acquired.some(e => e.name === 'quests')) {
+                if (!quests.acquire(owner)) { this.stop('Quests controlled by another session'); return false; }
+                this.acquired.push({name:'quests',adapter:quests});
+            }
+            this.timer = setInterval(() => this.tick(owner),250);
+            this.tick(owner);
+        }
+        this.render(); return this.active;
+    }
+    // Runtime extension points: planningContext, executePlan and observeProgress are
+    // deliberately separate so supply/background adapters can join the same session.
+    static planningContext() { return {rates:this.observedRates || {},previous:this.currentPlan?.primary}; }
+    static resolveQuest(entry, epoch) {
+        const snapshot = this.readQuestSnapshot(this.planningContext());
+        if (snapshot.epoch !== epoch) return null;
+        return snapshot.quests.find(q => q.native === entry.native) || null;
+    }
+    static observeProgress(snapshot) {
+        const now = Date.now(), previous = this.observation;
+        if (!previous || previous.epoch !== snapshot.epoch) {
+            this.observedRates = {}; this.rateSamples = {}; this.currentPlan = null; this.observation = {epoch:snapshot.epoch,time:now,quests:snapshot.quests,activity:null}; return;
+        }
+        const seconds = (now-previous.time)/1000;
+        if (seconds <= 0 || !this.currentPlan?.primary) return;
+        const activity = this.currentPlan.primary, rates = this.observedRates[activity.id] ||= {};
+        for (const q of snapshot.quests) {
+            const before = previous.quests.find(p => p.native === q.native);
+            if (previous.activity !== activity.id || !before?.active || !q.active || !this.activityMatches(q,activity)) continue;
+            const delta = before.remaining-q.remaining;
+            // Include time with zero useful progress, rather than measuring only
+            // lucky successes. Separate targets sharing a metric never borrow rates.
+            const key = `${this.questMetrics[q.type]}:${JSON.stringify(q.target)}`;
+            const samples = this.rateSamples[activity.id] ||= {};
+            const sample = samples[key] ||= {units:0,seconds:0};
+            sample.units += Math.max(0,delta); sample.seconds += seconds;
+            if (sample.units > 0) rates[key] = sample.units/sample.seconds;
+        }
+        this.observation = {epoch:snapshot.epoch,time:now,quests:snapshot.quests,activity:activity.id};
+    }
+    static executePlan(snapshot, plan) {
+        const primary = plan.primary;
+        if (!primary || !['route','gym','dungeon'].includes(primary.target.kind)) {
+            this.reason = plan.reasons.join(' · ') || 'Waiting for a supported quest activity'; return;
+        }
+        const nav = this.acquired.find(e => e.name === 'navigation')?.adapter;
+        const inspection = nav?.inspect();
+        if (inspection?.status === 'blocked') { this.reason = inspection.reason || 'Navigation blocked'; return; }
+        if (this.executing?.epoch === snapshot.epoch && this.executing.id === primary.id &&
+            !['done','ready'].includes(inspection?.status)) return;
+        // One native victory/clear is a safe replanning boundary even when the
+        // quest measures money, captures or another non-location counter.
+        if (this.apply('navigation',{target:primary.target,count:1,session:{moneyBudget:Number.MAX_SAFE_INTEGER,
+            tokenBudget:Number.MAX_SAFE_INTEGER,minutes:1440,stallMinutes:1440}})) {
+            this.executing = {id:primary.id,epoch:snapshot.epoch}; this.reason = primary.reason || 'Working';
+        } else this.reason = 'Navigation objective unavailable';
+    }
+    static tick(owner = this.owner) {
+        if (!owner?.isCurrent() || this.ticking) return;
+        this.ticking = true;
+        try {
+            let snapshot = this.readQuestSnapshot(this.planningContext());
+            this.observeProgress(snapshot);
+            // Native final claim may synchronously replace the list. Perform one
+            // claim per pass and rediscover before any subsequent native action.
+            for (const entry of snapshot.quests.filter(q => q.active && !q.claimed && !q.remaining)) {
+                const current = this.resolveQuest(entry,snapshot.epoch);
+                if (!owner.isCurrent() || !current || this.claimAttempts.has(current.native)) continue;
+                this.claimAttempts.add(current.native);
+                App.game.quests.claimQuest(this.questObjects.indexOf(current.native));
+                return;
+            }
+            const slots = this.registry().adapters.quests?.inspect().slots ?? (Number(this.read(App.game.quests.questSlots)) || 1);
+            for (const entry of snapshot.quests.filter(q => q.known && !q.active && !q.claimed)) {
+                const current = this.resolveQuest(entry,snapshot.epoch);
+                if (!owner.isCurrent() || !current) return;
+                const fresh = this.readQuestSnapshot(this.planningContext());
+                if (fresh.quests.filter(q => q.active && !q.claimed).length >= slots || !App.game.quests.canStartNewQuest()) break;
+                App.game.quests.beginQuest(this.questObjects.indexOf(current.native));
+            }
+            snapshot = this.readQuestSnapshot(this.planningContext());
+            // Pending slot entries cannot steal execution from accepted quests.
+            const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active)};
+            const plan = this.selectPlan(activeSnapshot,this.buildCandidates(activeSnapshot));
+            this.executePlan(snapshot,plan); this.currentPlan = plan;
+            if (this.observation) {
+                this.observation.activity = plan.primary?.id;
+                this.observation.quests = snapshot.quests;
+            }
+            this.render();
+        } catch (error) { this.stop(`Quest execution failed: ${error.message}`); }
+        finally { this.ticking = false; }
     }
     static apply(name, objective) {
         if (!this.owner?.isCurrent()) return false;
@@ -229,6 +323,7 @@ class AutoQuestRunner {
     static stop(reason = 'Stopped') {
         if (!this.active) return;
         this.owner.active = false; this.active = false;
+        clearInterval(this.timer); this.timer = null;
         for (const {adapter} of this.acquired.reverse()) {
             try { adapter.release(this.owner, reason); } catch (error) { console.error('[Auto Quest Runner]', error); }
         }

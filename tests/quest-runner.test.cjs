@@ -83,3 +83,21 @@ test('dungeon bootstrap can observe one funded entry without estimating future t
  s.resources.dungeonToken=29;p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary,null);
  f.w.DungeonGuides.hired=()=>true;s=r.readQuestSnapshot();s.resources.dungeonToken=30;p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary,null);
 });
+
+function loopFixture(kind='route',deferred=false){
+ const f=setup(),r=f.w.AutoQuestRunner;let value=0,list,accepted=0,claimed=0,applies=0,state='ready';const notifications=[];
+ const obs=initial=>{let v=initial;const listeners=new Set();const o=(...args)=>{if(!args.length)return v;v=args[0];for(const cb of listeners)deferred?notifications.push(()=>cb(v)):cb(v);};o.subscribe=cb=>(listeners.add(cb),{dispose:()=>listeners.delete(cb)});return o;};
+ const make=()=>quest(kind==='route'?'DefeatPokemonsQuest':kind==='gym'?'DefeatGymQuest':'DefeatDungeonQuest',{amount:1,route:1,region:0,gymTown:'Special Gym',dungeon:'Shared Town',initial:obs(null),focus:()=>value,claimed:obs(false)});
+ list=obs([make()]);nativeLocations(f);f.w.Routes={regionRoutes:[{number:1,region:0,isUnlocked:()=>true}]};f.w.RouteHelper={getAvailablePokemonList:()=>[]};f.w.App.game.wallet={currencies:[()=>1000,()=>1000]};
+ f.w.App.game.quests={questList:list,questSlots:()=>1,canStartNewQuest:()=>!list().some(q=>q.initial()!=null&&!q.claimed()),beginQuest:i=>{accepted++;list()[i].initial(value);},claimQuest:i=>{const q=list()[i];assert.equal(value-q.initial(),1);assert.equal(q.claimed(),false);claimed++;q.claimed(true);list([make()]);}};
+ f.w.PokeAutomationAdapters.adapters.navigation={acquire:()=>true,release:()=>{},inspect:()=>({status:state}),apply:(owner,objective)=>{assert.equal(list()[0].initial()!=null,true);assert.equal(objective.count,1);assert.ok(objective.session.tokenBudget>0);applies++;state='running';return true;}};
+ return {f,r,complete(){value++;state='done';f.tick();},flush(){while(notifications.length)notifications.shift()();},counts:()=>({accepted,claimed,applies}),replace(){list([make()]);}};
+}
+for(const kind of ['route','gym','dungeon'])test(`autonomous ${kind} accepts works claims and starts native next list`,()=>{
+ const t=loopFixture(kind,true);assert.equal(t.r.start(),true);assert.equal(t.counts().accepted,1);assert.equal(t.counts().applies,1);t.complete();t.flush();t.f.tick();assert.equal(t.counts().claimed,1);assert.equal(t.counts().accepted,2);assert.equal(t.counts().applies,2);t.r.stop();t.complete();assert.equal(t.counts().claimed,1);
+});
+test('manual list replacement discards old identity and measured rates',()=>{const t=loopFixture();t.r.start();t.replace();t.f.tick();assert.equal(t.counts().accepted,2);assert.equal(t.counts().claimed,0);t.r.stop();});
+test('runtime measures useful target progress and drops samples when list identity changes',()=>{
+ const t=loopFixture();let now=1000;t.f.w.Date.now=()=>now;t.r.start();now+=1000;t.complete();const rates=t.r.observedRates['route:0:1'];assert.equal(Object.values(rates)[0],1);
+ t.f.tick();assert.equal(Object.keys(t.r.observedRates).length,0);t.r.stop();
+});

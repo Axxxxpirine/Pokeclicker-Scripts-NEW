@@ -618,7 +618,14 @@ class AutoQuestRunner {
         const remaining=snapshot.quests.filter(q=>!q.claimed && q.remaining>0);
         if (!remaining.length || snapshot.quests.some(q=>!q.claimed && q.remaining===0)) return {refresh:false,reason:'Native completion pending'};
         const candidates=this.buildCandidates(snapshot);
-        const realizable=remaining.some(q=>candidates.some(c=>c.questIds.includes(q.id) && (c.exploratory || c.seconds>0 || c.prerequisites.some(p=>['commitment','guide'].includes(p.resource)))));
+        const realizable=remaining.some(q=>candidates.some(c=>c.questIds.includes(q.id) && (
+            c.exploratory || c.seconds>0 || c.prerequisites.some(p=>['commitment','guide'].includes(p.resource)) ||
+            // Execution can earn entry currencies before a completion rate is
+            // known. Token recovery may first earn money for standard balls.
+            // Keep that supported preparation path rather than discard it here.
+            c.entryPrerequisites.length>0 && c.entryPrerequisites.every(p=>
+                ['money','dungeonToken'].includes(p.resource) && this.recoveryActivity(snapshot,p.resource))
+        )));
         const cost=Math.max(0,Number(estimates.refreshCost)||0);
         if (!realizable && !cost) return {refresh:true,reason:'No executable current quest, free fallback'};
         if (!(estimates.observations>=2 && estimates.currentSeconds>0 && estimates.nextSeconds>0 && estimates.nextReward>0))

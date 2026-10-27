@@ -92,29 +92,40 @@ class EnhancedAutoClicker {
         const registry = w.PokeAutomationAdapters ||= {version:1, adapters:Object.create(null), movementOwner:null};
         if (registry.version !== 1 || registry.adapters.clicker) return;
         let owner = null, snapshot, expected, internal = false;
+        const controls = {autoClickState:'toggleAutoClick',autoGymState:'toggleAutoGym',autoDungeonState:'toggleAutoDungeon'};
+        const states = () => Object.fromEntries(Object.keys(controls).map(key => [key,this[key]()]));
         const persisted = action => {
-            const previous = localStorage.getItem('autoClickState');
+            const previous = Object.fromEntries(Object.keys(controls).map(key => [key,localStorage.getItem(key)]));
             try { return this.navigationOwner?.active ? this.navigationOwner.own(action) : action(); }
-            finally { previous === null ? localStorage.removeItem('autoClickState') : localStorage.setItem('autoClickState',previous); }
+            finally { for (const [key,value] of Object.entries(previous)) value === null ? localStorage.removeItem(key) : localStorage.setItem(key,value); }
         };
         registry.adapters.clicker = {
             inspect:() => ({status:owner ? 'running' : 'ready', enabled:this.autoClickState()}),
             acquire:token => {
-                if (!token?.active || !token.isCurrent() || (owner && owner !== token) || (registry.movementOwner && registry.movementOwner !== token)) return false;
-                if (!owner) { owner = token; snapshot = expected = this.autoClickState(); }
+                if (!token?.active || !token.isCurrent() || (owner && owner !== token) || (registry.movementOwner && registry.movementOwner !== token) || (registry.clickerOwner && registry.clickerOwner !== token) || (w.AutoNavigator?.active && w.AutoNavigator.externalOwner !== token)) return false;
+                if (!owner) { owner = token; snapshot = expected = states(); }
+                registry.clickerOwner = token; registry.clickerAdapterOwner = token;
                 return true;
             },
             apply:(token, objective) => {
                 if (owner !== token || !token.active || !token.isCurrent() || typeof objective?.enabled !== 'boolean') return false;
                 internal = true;
-                try { persisted(() => { if (this.autoClickState() !== objective.enabled) this.toggleAutoClick(); }); expected = this.autoClickState(); }
+                try { persisted(() => { if (this.autoClickState() !== objective.enabled) this.toggleAutoClick(); }); expected = states(); }
                 finally { internal = false; }
                 return true;
             },
-            release:token => {
+            release:(token, reason = '') => {
                 if (owner !== token) return false;
                 owner = null; internal = true;
-                try { persisted(() => { if (this.autoClickState() === expected && expected !== snapshot) this.toggleAutoClick(); }); }
+                if (registry.clickerAdapterOwner === token) registry.clickerAdapterOwner = null;
+                if (registry.clickerOwner === token && registry.movementOwner !== token) registry.clickerOwner = null;
+                try { persisted(() => {
+                    // Restore click first. Native spending toggles can then validate the current location.
+                    for (const [key,toggle] of Object.entries(controls)) {
+                        if (key !== 'autoClickState' && /manual/i.test(reason)) continue;
+                        if (this[key]() === expected[key] && expected[key] !== snapshot[key]) this[toggle]();
+                    }
+                }); }
                 finally { internal = false; }
                 return true;
             },

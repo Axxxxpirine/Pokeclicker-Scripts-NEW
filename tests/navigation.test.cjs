@@ -321,3 +321,43 @@ test('runner and navigation preserve shared registry in either initialization or
  const g=setup();delete g.w.PokeAutomationAdapters;g.run(source);g.run('AutoQuestRunner.init()');const early=g.w.PokeAutomationAdapters;
  g.nav.registerAdapter();assert.equal(g.w.PokeAutomationAdapters,early);assert.equal(g.w.AutoQuestRunner.active,false);
 });
+function installNativeClickerControls(f) {
+ const fs=require('node:fs'),path=require('node:path');const source=fs.readFileSync(path.join(__dirname,'../enhancedautoclicker.user.js'),'utf8');
+ for(const name of ['toggleAutoClick','toggleAutoGym','toggleAutoDungeon','registerAutomationAdapter']) {
+  const match=source.match(new RegExp('static '+name+'\\(([^)]*)\\) \\{([\\s\\S]*?)\\n    \\}'));
+  assert.ok(match,name);f.run('EnhancedAutoClicker.'+name+'=function('+match[1]+'){'+match[2]+'}');
+ }
+ for(const id of ['auto-click-start','auto-gym-start','auto-dungeon-start']) {const button=f.w.document.createElement('button');button.id=id;f.w.document.body.append(button);}
+ f.eac.toggleAutoClickerLoop=()=>{};f.eac.canStartAutoGym=()=>true;f.eac.canStartAutoDungeon=()=>true;
+ f.eac.registerAutomationAdapter();return f.w.PokeAutomationAdapters.adapters.clicker;
+}
+function tokenFor(...adapters) {return {active:true,isCurrent(){return this.active;},onManual(reason){this.active=false;for(const a of adapters)a.release(this,reason);}};}
+test('manual travel invalidates idle acquired navigation and failed first objectives',()=>{
+ for(const invalid of [false,true]) {const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation,owner=tokenFor(a);a.acquire(owner);
+  if(invalid)assert.equal(a.apply(owner,{target:{kind:'route',number:2,region:0},count:1}),false);
+  f.w.MapHelper.moveToRoute(3,0);assert.equal(owner.active,false);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+  assert.equal(a.apply(owner,{target:{kind:'route',number:1,region:0},count:1}),false);assert.equal(f.player.route,3);
+ }
+});
+test('clicker and movement reservations are symmetric and include standalone navigation',()=>{
+ const f=setup(),clicker=installNativeClickerControls(f),nav=f.w.PokeAutomationAdapters.adapters.navigation;
+ const a=tokenFor(clicker),b=tokenFor(nav);assert.equal(clicker.acquire(a),true);assert.equal(nav.acquire(b),false);assert.equal(f.nav.start(settings),false);
+ clicker.release(a);assert.equal(nav.acquire(b),true);assert.equal(clicker.acquire(a),false);assert.equal(clicker.acquire(b),true);
+ nav.release(b,'Stopped');assert.equal(nav.acquire(a),false);clicker.release(b);assert.equal(f.nav.start(settings),true);
+ assert.equal(clicker.acquire(a),false);f.nav.stop();assert.equal(clicker.acquire(a),true);clicker.release(a);
+});
+test('native clicker disable preserves and conditionally restores gym and dungeon cascades',()=>{
+ for(const mode of ['Gym','Dungeon']) {const f=setup(),a=installNativeClickerControls(f),owner=tokenFor(a);
+  f.eac['toggleAuto'+mode]();assert.equal(f.eac.autoClickState(),true);assert.equal(f.eac['auto'+mode+'State'](),true);
+  const stored=['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key));
+  assert.equal(a.acquire(owner),true);assert.equal(a.apply(owner,{enabled:false}),true);
+  assert.equal(f.eac['auto'+mode+'State'](),false);assert.deepEqual(['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key)),stored);
+  a.release(owner);assert.equal(f.eac.autoClickState(),true);assert.equal(f.eac['auto'+mode+'State'](),true);
+  assert.deepEqual(['autoClickState','autoGymState','autoDungeonState'].map(key=>f.w.localStorage.getItem(key)),stored);
+ }
+});
+test('manual native spending control during temporary disable retains user choice',()=>{
+ const f=setup(),a=installNativeClickerControls(f),owner=tokenFor(a);f.eac.toggleAutoGym();a.acquire(owner);a.apply(owner,{enabled:false});
+ f.eac.toggleAutoDungeon();assert.equal(owner.active,false);assert.equal(f.eac.autoDungeonState(),true);assert.equal(f.eac.autoGymState(),false);
+ assert.equal(f.w.localStorage.getItem('autoDungeonState'),'true');
+});

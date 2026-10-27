@@ -87,8 +87,8 @@ class AutoNavigator {
                 reason:this.message || '', progress:this.current ? this.progress(this.current) : 0,
                 costs:{...(this.spent || {money:0,dungeonToken:0})}}),
             acquire:owner => {
-                if (!owner?.active || !owner.isCurrent() || (registry.movementOwner && registry.movementOwner !== owner) || (this.active && this.externalOwner !== owner)) return false;
-                registry.movementOwner = owner; this.externalOwner = owner; this.externalStatus = 'ready'; return true;
+                if (!owner?.active || !owner.isCurrent() || (registry.movementOwner && registry.movementOwner !== owner) || (registry.clickerOwner && registry.clickerOwner !== owner) || (this.active && this.externalOwner !== owner)) return false;
+                registry.movementOwner = owner; registry.clickerOwner = owner; this.externalOwner = owner; this.externalStatus = 'ready'; return true;
             },
             apply:(owner, objective) => this.applyExternal(owner, objective),
             release:(owner, reason) => {
@@ -99,6 +99,7 @@ class AutoNavigator {
                     this.releasingExternal = false; this.externalOwner = null; this.externalObjective = null;
                     this.externalStatus = 'ready'; this.pendingExternal = null;
                     if (registry.movementOwner === owner) registry.movementOwner = null;
+                    if (registry.clickerOwner === owner && registry.clickerAdapterOwner !== owner) registry.clickerOwner = null;
                     if (this.savedSettings) this.settings = this.savedSettings;
                     this.savedSettings = null;
                 }
@@ -154,7 +155,7 @@ class AutoNavigator {
         for (const name of ['moveToRoute','moveToTown']) {
             const original = MapHelper[name];
             MapHelper[name] = function(...args) {
-                if (owner.active && !owner.internal) owner.stop('Manual or external travel',false,true);
+                if ((owner.active || owner.externalOwner) && !owner.internal) owner.stop('Manual or external travel',false,true);
                 return original.apply(this,args);
             };
         }
@@ -211,6 +212,10 @@ class AutoNavigator {
         if (!this.valid(settings)) { this.status('Invalid settings. Counts and budgets must be finite whole numbers.'); return false; }
         const w = !App.isUsingClient ? unsafeWindow : window;
         const clicker = w.EnhancedAutoClicker || (typeof EnhancedAutoClicker !== 'undefined' ? EnhancedAutoClicker : null);
+        const registry = w.PokeAutomationAdapters;
+        if (registry?.clickerOwner && registry.clickerOwner !== this && !(this.externalStarting && registry.clickerOwner === this.externalOwner)) {
+            this.status('Clicker is controlled by another session'); return false;
+        }
         if (!clicker || clicker.navigationVersion !== 1) { this.status('Install the fork’s updated Enhanced Auto Clicker first.'); return false; }
         if (this.externalOwner && !this.externalStarting) { this.externalOwner.onManual('Manual navigation control'); if (this.externalOwner) return false; }
         if (this.active) this.stop('Restarted',true);
@@ -225,6 +230,7 @@ class AutoNavigator {
         }
         const objective = this.prepareObjective(settings);
         if (!objective) return false;
+        if (registry && !this.externalStarting) registry.clickerOwner = this;
         this.settings = {...settings};
         if (!this.externalStarting) localStorage.setItem('autoNavigationSettings',JSON.stringify(this.settings));
         this.clicker = clicker; clicker.navigationOwner = this;
@@ -257,11 +263,11 @@ class AutoNavigator {
     }
 
     static stop(reason = 'Stopped', returnHome = true, abandon = returnHome) {
-        if (!this.active) return;
         if (this.externalOwner && !this.releasingExternal) {
             this.externalOwner.onManual(reason);
             if (!this.active) return;
         }
+        if (!this.active) return;
         if (this.releasingExternal) {
             this.active = false;
             const c = this.clicker;
@@ -278,6 +284,8 @@ class AutoNavigator {
         }
         if (abandon) this.abandonDungeon();
         this.active = false;
+        const registry = (!App.isUsingClient ? unsafeWindow : window).PokeAutomationAdapters;
+        if (registry?.clickerOwner === this) registry.clickerOwner = null;
         const c = this.clicker;
         this.own(() => {
             GymRunner.autoRestart(false);

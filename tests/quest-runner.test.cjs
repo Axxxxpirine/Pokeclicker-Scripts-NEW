@@ -40,7 +40,8 @@ test('all eighteen classes map to executable activity metrics and prerequisites'
  }
 });
 test('completion wakes replanning, hysteresis holds near ties, and resources include recovery time',()=>{
- const r=setup().w.AutoQuestRunner,s=snapshot([normalized('q','CapturePokemonsQuest')],[{id:'a',target:{kind:'route'},unlocked:true,rates:{capture:1}},{id:'b',target:{kind:'route'},unlocked:true,rates:{capture:1.1}}]);
+ const r=setup().w.AutoQuestRunner,s=snapshot([normalized('q','CapturePokemonsQuest')],[{id:'a',target:{kind:'route'},unlocked:true,rates:{capture:1,ball:1}},{id:'b',target:{kind:'route'},unlocked:true,rates:{capture:1.1,ball:1.1}}]);
+ s.resources.balls=[100,0,0];
  s.previous={id:'a',epoch:1};let p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.id,'a');
  s.quests.push(normalized('done','HatchEggsQuest',0));p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.id,'b');assert.equal(p.replan,true);assert.deepEqual([...p.claimable],['done']);
  s.activities[1].requirements=[{resource:'money',amount:100}];s.rates.money=10;const c=r.buildCandidates(s).find(c=>c.id==='b');assert.ok(c.seconds>19);assert.equal(c.prerequisites[0].missing,100);

@@ -224,3 +224,76 @@ test('Shadow quest execution requests encounter traversal only while contributin
  r.executePlan(snapshot,{primary,background:[],reasons:[]});
  assert.equal(objective?.encounters, true);
 });
+
+test('active capture type union catches both useful types and protects unrelated shinies',()=>{
+ const {r,w,snapshot,activity,balls}=fixture();
+ activity.types=[0,2];activity.encounters=[{name:'Normal',type:[0],catchRate:100},{name:'Water',type:[2],catchRate:100}];
+ snapshot.quests=[0,2].map(type=>({id:String(type),type:'CapturePokemonTypesQuest',target:{type},remaining:10,known:true,active:true}));
+ snapshot.resources.balls[0]=20;balls[0].quantity(20);
+ w.PokemonHelper.getPokemonById=id=>({type1:id,type2:-1});
+ r.applyCapturePolicy(r.planSupplies(snapshot,activity).capture);
+ assert.equal(w.App.game.pokeballs.calculatePokeballToUse(0,false),0);
+ assert.equal(w.App.game.pokeballs.calculatePokeballToUse(2,false),0);
+ assert.equal(w.App.game.pokeballs.calculatePokeballToUse(3,false),-1);
+ assert.equal(w.App.game.pokeballs.calculatePokeballToUse(3,true),0);
+});
+test('token recovery deficit purchases a useful bounded batch and respects partial affordability',()=>{
+ const {r,snapshot,activity}=fixture();snapshot.quests=[];
+ const work={...activity,recoverTokens:true,recoveryResource:'dungeonToken',amount:10000};
+ assert.equal(r.planSupplies(snapshot,work).purchase.quantity,100);
+ snapshot.resources.money=90;
+ assert.equal(r.planSupplies(snapshot,work).purchase.quantity,3);
+});
+test('runtime passes the remaining token deficit to supply planning',()=>{
+ const {r,snapshot,activity}=fixture();snapshot.resources.dungeonToken=100;
+ const dungeon={id:'d',target:{kind:'dungeon',name:'D'},unlocked:true,rates:{dungeon:1},capabilities:['dungeon'],requirements:[{resource:'dungeonToken',amount:10100}]};
+ snapshot.activities.push(dungeon);snapshot.quests=[{id:'dq',type:'DefeatDungeonQuest',target:{kind:'dungeon',name:'D'},remaining:1,reward:100,known:true,active:true}];
+ let purchase;r.executePurchase=p=>{purchase=p;return {status:'travel',target:p.target};};
+ r.executePlan(snapshot,{primary:dungeon,reasons:[]});
+ assert.equal(purchase.quantity,100);
+});
+test('capture economics include missing balls money recovery and known supply setup',()=>{
+ const {r,snapshot,activity}=fixture();snapshot.quests[0].remaining=10;
+ activity.supplySetupSeconds=6;snapshot.resources.money=0;snapshot.resources.balls=[100,0,0];
+ const stocked=r.buildCandidates(snapshot)[0];snapshot.resources.balls=[0,0,0];
+ const poor=r.buildCandidates(snapshot)[0];
+ assert.ok(poor.seconds>=stocked.seconds+6+121,'11 balls quote 1210, native money rate 10/s');
+ assert.ok(poor.score<stocked.score);
+});
+test('unknown supply cost prevents a fabricated profitable capture estimate',()=>{
+ const {r,w,snapshot}=fixture();snapshot.quests[0].remaining=10;w.TownList={};
+ const candidate=r.buildCandidates(snapshot)[0];
+ assert.equal(candidate.seconds,null);assert.equal(candidate.score,0);assert.match(candidate.reason,/supply|ball|shop/i);
+});
+
+test('one planning tick bounds native attack and encounter work and later ticks refresh every input',()=>{
+ const {r,w,balls}=fixture();let attacks=0,clicks=0,encounters=0,power=100,bonus=0,health=100,type=0;
+ balls[0].quantity(1000);balls[1].quantity(0);r.confirmedClaims=new WeakSet();w.MapHelper.accessToRoute=()=>true;
+ w.App.game.party.calculatePokemonAttack=()=>{attacks++;return power;};
+ w.App.game.party.calculateClickAttack=()=>{clicks++;return 0;};
+ w.App.game.pokeballs.getCatchBonus=()=>bonus;
+ w.PokemonFactory.routeHealth=()=>health;
+ w.pokemonMap={Normal:{name:'Normal',type:[0],catchRate:100},Water:{name:'Water',type:[2],catchRate:100}};
+ w.Routes={regionRoutes:Array.from({length:30},(_,i)=>({number:i+1,region:0,isUnlocked:()=>true}))};
+ w.RouteHelper={getAvailablePokemonList:()=>{encounters++;return [type===0?'Normal':'Water'];}};
+ const list=[{constructor:{name:'CapturePokemonsQuest'},amount:10,pointsReward:10,initial:()=>0,focus:()=>0,claimed:()=>false},
+  {constructor:{name:'UsePokeballQuest'},pokeball:1,amount:10,pointsReward:100,initial:()=>null,focus:()=>0,claimed:()=>false}];
+ w.App.game.quests={questList:()=>list,canStartNewQuest:()=>false};
+ r.acquired=[{name:'navigation',adapter:{inspect:()=>({status:'ready'}),apply:()=>true,release(){}}}];
+ r.tick();
+ assert.equal(r.active,true,r.reason);assert.ok(r.currentPlan.primary);
+ assert.equal(r.currentPlan.primary.pokeball,0,'pending exact-ball quest cannot override accepted capture work');
+ assert.ok(attacks<=1,`duplicate native party traversals: ${attacks}`);
+ assert.ok(clicks<=1,`duplicate native click traversals: ${clicks}`);
+ assert.ok(encounters<=30,`duplicate encounter discovery: ${encounters}`);
+ const original=r.currentPlan.primary.rates.capture;
+ power=10;health=200;bonus=-30;type=2;w.player.region=1;w.player.highestRegion=()=>1;w.GameConstants.DockTowns={1:'Mart'};
+ balls[0].quantity(0);balls[1].quantity(1000);
+ r.tick();
+ assert.equal(r.currentPlan.primary.pokeball,1);
+ assert.deepEqual([...r.currentPlan.primary.types],[2]);
+ assert.ok(r.currentPlan.primary.rates.capture<original);
+ assert.equal(attacks,2);assert.equal(clicks,2);assert.equal(encounters,60);
+ // Outside a tick, public estimation also reads live state rather than a leftover memo.
+ power=10000;assert.ok(r.nativeRates(r.currentPlan.primary,1).capture>r.currentPlan.primary.rates.capture);
+});

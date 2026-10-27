@@ -85,14 +85,18 @@ class AutoQuestRunner {
             const waitingGuide = restriction === 'Wait for hired dungeon guide';
             const reason = waitingGuide ? null : restriction;
             const id = `dungeon:${name}`;
-            activities.push({id,target,unlocked:!reason,reason,capabilities:['dungeon'],rates:context.rates?.[id] || {},
+            const shadowEncounters = this.shadowEncounters(dungeon);
+            activities.push({id,target,unlocked:!reason,reason,shadowEncounters,capabilities:['dungeon',...(shadowEncounters.length ? ['shadow'] : [])],rates:context.rates?.[id] || {},
                 requirements:[{resource:'dungeonToken',amount:Number(dungeon.tokenCost)},
                     ...(waitingGuide ? [{resource:'guide',amount:1,reason:restriction}] : [])]});
         }
         // Adapter inspection supplies availability and existing commitments without applying objectives.
         for (const name of ['farm','hatchery','mine','frontier']) {
             const inspection = this.registry().adapters[name]?.inspect();
-            for (const activity of inspection?.activities || []) activities.push({...activity,module:name});
+            for (const activity of inspection?.activities || []) {
+                const restriction=activity.target.kind==='frontier' ? this.departureRestriction(activity.target) : null;
+                activities.push({...activity,module:name,...(restriction ? {unlocked:false,reason:restriction} : {})});
+            }
             const native = {farm:App.game.farming,hatchery:App.game.breeding,mine:App.game.underground}[name];
             if (!inspection?.activities?.length && native?.canAccess?.()) {
                 const capabilities = {farm:['farmPoints'],hatchery:['hatch','capture','shiny'],mine:['layers','items']}[name];
@@ -100,6 +104,13 @@ class AutoQuestRunner {
             }
         }
         return activities;
+    }
+    static shadowEncounters(dungeon) {
+        // Display rows lose boss trainer locks. Inspect executable definitions.
+        return [...new Set([...(dungeon.enemyList || []),...(dungeon.bossList || [])].flatMap(enemy => {
+            if (!enemy || typeof enemy.getTeam !== 'function' || enemy.options?.requirement && !enemy.options.requirement.isCompleted()) return [];
+            return enemy.getTeam().filter(p => p.shadow === GameConstants.ShadowStatus.Shadow).map(p => p.name);
+        }))];
     }
     static departureRestriction(target) {
         if (typeof player !== 'undefined') {
@@ -174,7 +185,7 @@ class AutoQuestRunner {
         const reasons = snapshot.quests.filter(q => !q.known).map(q => q.reason);
         for (const activity of snapshot.activities.filter(a => !a.unlocked && a.reason)) reasons.push(`${activity.id}: ${activity.reason}`);
         for (const q of snapshot.quests.filter(q => q.known && !q.claimed && q.remaining > 0)) {
-            if (!candidates.some(c => c.questIds.includes(q.id))) reasons.push(`${q.id}: No unlocked path with a useful progress estimate`);
+            if (!candidates.some(c => c.questIds.includes(q.id))) reasons.push(`${q.id}: ${q.type==='CatchShadowsQuest' ? 'No unlocked native Shadow trainer encounter' : 'No unlocked path with a useful progress estimate'}`);
         }
         const ranked = candidates.filter(c => c.seconds !== null && c.score > 0).sort((a,b) => b.score-a.score || a.id.localeCompare(b.id));
         const exploratory = candidates.filter(c => c.exploratory).sort((a,b) => a.id.localeCompare(b.id));
@@ -291,7 +302,7 @@ class AutoQuestRunner {
         const exact=quests.find(q=>q.type==='UsePokeballQuest');
         if (exact && !(exact.target.pokeball>=0 && exact.target.pokeball<=2)) return {ready:false,reason:'Only standard balls are used automatically'};
         const magic=typeof OakItemType === 'undefined' ? 0 : OakItemType.Magic_Ball;
-        const captureQuests=quests.filter(q=>['CapturePokemonsQuest','CapturePokemonTypesQuest','GainTokensQuest','CatchShiniesQuest','UsePokeballQuest'].includes(q.type)
+        const captureQuests=quests.filter(q=>['CapturePokemonsQuest','CapturePokemonTypesQuest','GainTokensQuest','CatchShiniesQuest','CatchShadowsQuest','UsePokeballQuest'].includes(q.type)
             || q.type==='UseOakItemQuest' && q.target.item===magic);
         const needsCapture=captureQuests.length>0 || objective.recoverTokens;
         const oakItems=objective.oakItems || [];
@@ -304,11 +315,11 @@ class AutoQuestRunner {
         if ((snapshot.resources.balls?.[ball] || 0)>0) return {ready:true,ball,capture,oakItems};
         const native=this.nativeRates(objective,ball);
         const probability=native.captureProbability || (objective.rates?.ball>0 ? objective.rates.capture/objective.rates.ball : 0);
-        if (!exact && !(probability>0)) return {ready:false,ball,reason:'Native capture probability estimate unavailable'};
+        if (!exact && !captureQuests.some(q=>['CatchShiniesQuest','CatchShadowsQuest'].includes(q.type)) && !(probability>0)) return {ready:false,ball,reason:'Native capture probability estimate unavailable'};
         const tokenYield=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(objective.target.number,objective.target.region));
         if (quests.some(q=>q.type==='GainTokensQuest') && !(tokenYield>0)) return {ready:false,ball,reason:'Native token yield estimate unavailable'};
         const attempts=Math.max(1,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
-            : q.type==='GainTokensQuest' ? q.remaining/(probability*tokenYield) : q.remaining/probability));
+            : q.type==='GainTokensQuest' ? q.remaining/(probability*tokenYield) : q.remaining/(probability || 1)));
         const quantity=Math.min(100,Math.ceil(attempts));
         const reserve=Math.max(0,...(objective.requirements || []).filter(p=>p.resource==='money').map(p=>Number(p.amount)||0));
         const shops=this.shopsForBall(ball).map(s=>({...s,quote:Number(s.item.totalPrice(quantity))})).filter(s=>Number.isFinite(s.quote) && s.quote>=0).sort((a,b)=>a.quote-b.quote);
@@ -447,7 +458,7 @@ class AutoQuestRunner {
             }
         } catch (error) { this.stop(error.message); return false; }
         this.confirmedClaims = new WeakSet(); this.executing = null; this.currentPlan = null;
-        this.observation = null; this.observedRates = {}; this.rateSamples = {};
+        this.observation = null; this.observedRates = {}; this.rateSamples = {}; this.listStarted=null;
         this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
             const quests = registry.adapters.quests;
@@ -470,6 +481,10 @@ class AutoQuestRunner {
     }
     static observeProgress(snapshot) {
         const now = Date.now(), previous = this.observation;
+        const stats=App.game.statistics;
+        const attempts={battles:Number(this.read(stats?.totalPokemonDefeated))||0,hatches:Number(this.read(stats?.totalPokemonHatched))||0};
+        if (!this.attemptBaseline || this.attemptEpoch!==snapshot.epoch) {this.attemptBaseline=attempts;this.attemptEpoch=snapshot.epoch;}
+        this.attemptProgress={battles:Math.max(0,attempts.battles-this.attemptBaseline.battles),hatches:Math.max(0,attempts.hatches-this.attemptBaseline.hatches)};
         if (!previous || previous.epoch !== snapshot.epoch) {
             this.observedRates = {}; this.rateSamples = {}; this.currentPlan = null; this.observation = {epoch:snapshot.epoch,time:now,quests:snapshot.quests,activity:null}; return;
         }
@@ -524,8 +539,9 @@ class AutoQuestRunner {
     }
     static executePlan(snapshot, plan) {
         const wanted=new Set((plan.background || []).map(a=>a.module));
+        if (plan.primary?.module==='frontier') wanted.add('frontier');
         for (const entry of [...this.acquired]) {
-            if (['farm','hatchery','mine'].includes(entry.name) && !wanted.has(entry.name)) {
+            if (['farm','hatchery','mine','frontier'].includes(entry.name) && !wanted.has(entry.name)) {
                 entry.adapter.release(this.owner,'Objective complete');
                 this.acquired=this.acquired.filter(e=>e !== entry);
             }
@@ -561,6 +577,16 @@ class AutoQuestRunner {
                 }
             }
         }
+        if (primary?.target.kind==='frontier') {
+            const adapter=this.registry().adapters.frontier;
+            if (!adapter) {this.reason='Battle Frontier module unavailable';return;}
+            if (!this.acquired.some(e=>e.name==='frontier')) {
+                if (!adapter.acquire(this.owner)) {this.reason='Battle Frontier controlled elsewhere';return;}
+                this.acquired.push({name:'frontier',adapter});
+            }
+            adapter.apply(this.owner,{target:primary.target,count:1});
+            this.reason=adapter.inspect().reason || 'Working in Battle Frontier';return;
+        }
         if (!primary || !['route','gym','dungeon'].includes(primary.target.kind)) {
             this.reason=this.reason?.includes('no progress') ? this.reason : plan.reasons.join(' · ') || 'Waiting for a supported quest activity';return;
         }
@@ -572,7 +598,7 @@ class AutoQuestRunner {
             this.reason=`Recovering ${entry.resource}`;
         }
         const recoveryReason=this.reason;
-        if (primary.target.kind==='route') {
+        if (primary.target.kind==='route' || primary.capabilities?.includes('shadow')) {
             primary=this.prepareSupplies(snapshot,primary,nav);
             if (!primary) return;
         }
@@ -586,21 +612,84 @@ class AutoQuestRunner {
             this.reason=recovering ? recoveryReason : this.reason?.startsWith('Earning') ? this.reason : primary.reason || 'Working';
         } else this.reason='Navigation objective unavailable';
     }
+    static evaluateRefresh(snapshot, estimates = {}) {
+        const now=estimates.now ?? Date.now();
+        if (now < (this.refreshAfter || 0)) return {refresh:false,reason:'Refresh cooldown'};
+        const remaining=snapshot.quests.filter(q=>!q.claimed && q.remaining>0);
+        if (!remaining.length || snapshot.quests.some(q=>!q.claimed && q.remaining===0)) return {refresh:false,reason:'Native completion pending'};
+        const candidates=this.buildCandidates(snapshot);
+        const realizable=remaining.some(q=>candidates.some(c=>c.questIds.includes(q.id) && (c.exploratory || c.seconds>0 || c.prerequisites.some(p=>['commitment','guide'].includes(p.resource)))));
+        const cost=Math.max(0,Number(estimates.refreshCost)||0);
+        if (!realizable && !cost) return {refresh:true,reason:'No executable current quest, free fallback'};
+        if (!(estimates.observations>=2 && estimates.currentSeconds>0 && estimates.nextSeconds>0 && estimates.nextReward>0))
+            return {refresh:false,reason:'Prefer current quests while opportunity estimates are unknown'};
+        const recovery=cost ? estimates.moneyRate>0 ? cost/estimates.moneyRate : Infinity : 0;
+        const currentReward=remaining.reduce((n,q)=>n+q.reward,0)+Math.max(0,estimates.currentBonus || 0);
+        const currentRate=currentReward/estimates.currentSeconds;
+        const nextRate=estimates.nextReward/(estimates.nextSeconds+recovery);
+        return {refresh:Number.isFinite(nextRate) && nextRate>currentRate*1.25,currentRate,nextRate,reason:'Compare remaining rewards and list bonus including refresh cost recovery'};
+    }
+    static refreshEstimates(snapshot) {
+        const candidates=this.buildCandidates(snapshot),remaining=snapshot.quests.filter(q=>!q.claimed && q.remaining>0);
+        const seconds=remaining.map(q=>Math.min(...candidates.filter(c=>c.questIds.includes(q.id) && c.seconds>0).map(c=>c.seconds)));
+        const samples=this.listOpportunities || [];
+        return {// Optimistic current-list lower bound avoids double counting synergy and
+            // concurrent modules. Bias toward retaining current work when unsure.
+            currentSeconds:seconds.length && seconds.every(Number.isFinite) ? Math.max(...seconds) : null,
+            currentBonus:Number(App.game.quests.calcListBonus?.()) || 0,observations:samples.length,
+            nextReward:samples.length ? samples.reduce((s,x)=>s+x.reward,0)/samples.length : 0,
+            nextSeconds:samples.length ? samples.reduce((s,x)=>s+x.seconds,0)/samples.length : 0,
+            moneyRate:Math.max(0,...snapshot.activities.filter(a=>a.unlocked).map(a=>this.prepareActivity(a,snapshot).rates?.money || 0))};
+    }
+    static tryRefresh(snapshot, estimates = {}) {
+        const native=App.game.quests;
+        if (!this.owner?.isCurrent() || this.refreshPending || typeof native?.refreshQuests!=='function') return false;
+        const free=!!this.read(native.freeRefresh),cost=free ? 0 : Number(native.getRefreshCost?.().amount);
+        if (!(Number.isFinite(cost) && cost>=0)) return false;
+        const decision=this.evaluateRefresh(snapshot,{...this.refreshEstimates(snapshot),...estimates,refreshCost:cost});
+        if (!decision.refresh || cost>0 && !native.canAffordRefresh?.()) return false;
+        // Cancel old-list work before the native mutation, including pending navigation.
+        for (const entry of [...this.acquired]) if (['frontier','navigation'].includes(entry.name)) {
+            entry.adapter.release(this.owner,'Quest list refresh');
+            this.acquired=this.acquired.filter(e=>e!==entry);
+        }
+        this.releaseSupplies();this.executing=null;
+        const owner=this.owner,nav=this.registry().adapters.navigation;
+        if (nav?.acquire(owner)) this.acquired.push({name:'navigation',adapter:nav});
+        this.refreshAfter=(estimates.now ?? Date.now())+300000;this.refreshPending=true;
+        try {
+            const result=native.refreshQuests(free,false);
+            Promise.resolve(result).then(()=>{this.refreshPending=false;},error=>{this.refreshPending=false;if (owner.isCurrent()) this.reason=`Native refresh failed: ${error.message}`;});
+        } catch (error) {this.refreshPending=false;throw error;}
+        this.listStarted=null;return true;
+    }
     static tick(owner = this.owner) {
         if (!owner?.isCurrent() || this.ticking) return;
         this.ticking = true;
         try {
             let snapshot = this.readQuestSnapshot(this.planningContext());
             this.observeProgress(snapshot);
+            this.listStarted ||= {epoch:snapshot.epoch,time:Date.now(),whole:snapshot.quests.every(q=>!q.claimed && q.remaining===q.amount)};
+            if (this.listStarted.epoch!==snapshot.epoch) this.listStarted={epoch:snapshot.epoch,time:Date.now(),whole:snapshot.quests.every(q=>!q.claimed && q.remaining===q.amount)};
             // Native final claim may synchronously replace the list. Perform one
             // claim per pass and rediscover before any subsequent native action.
             for (const entry of snapshot.quests.filter(q => q.active && !q.claimed && !q.remaining)) {
                 const current = this.resolveQuest(entry,snapshot.epoch);
                 if (!owner.isCurrent() || !current || this.confirmedClaims.has(current.native)) continue;
+                const listBonus=Number(App.game.quests.calcListBonus?.())||0;
                 App.game.quests.claimQuest(this.questObjects.indexOf(current.native));
                 const after = this.readQuestSnapshot(this.planningContext());
                 if (this.read(current.native.claimed) || !after.quests.some(q => q.native === current.native)) {
                     this.confirmedClaims.add(current.native);
+                    if (snapshot.quests.every(q=>q.native===current.native || this.read(q.native.claimed))) {
+                        this.refreshAfter=Date.now()+300000;
+                        const seconds=(Date.now()-(this.listStarted?.time || Date.now()))/1000;
+                        if (seconds>0 && this.listStarted?.whole) {
+                            this.listOpportunities ||= [];
+                            this.listOpportunities.push({seconds,reward:snapshot.quests.reduce((s,q)=>s+q.reward,0)+listBonus});
+                            this.listOpportunities=this.listOpportunities.slice(-10);
+                        }
+                    }
                 }
                 // A deferred native completion computed may have refused this
                 // attempt. Leave it eligible on a later reconciliation pass.
@@ -619,6 +708,7 @@ class AutoQuestRunner {
             // Pending slot entries cannot steal execution from accepted quests.
             const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active)};
             const plan = this.selectPlan(activeSnapshot,this.buildCandidates(activeSnapshot));
+            if (this.tryRefresh(snapshot)) return;
             this.executePlan(snapshot,plan); this.currentPlan = plan;
             if (this.observation) {
                 this.observation.activity = plan.primary?.id;

@@ -43,6 +43,7 @@ class AutoBattleFrontier {
     }
 
     static initAutoBattleFrontier() {
+        AutoBattleFrontier.registerQuestAdapter();
         AutoBattleFrontier.overrideGameMethods();
 
         const bfStart = document.querySelector('#battleFrontierInformation a[onclick="BattleFrontierRunner.start(false)"]');
@@ -69,12 +70,60 @@ class AutoBattleFrontier {
         addGlobalStyle('#bf-attack-ceil-btn { position:absolute;left:0px;top:0px;width:auto;height:41px;padding:5px;display:flex;align-items:center; }');
     }
 
+    static registerQuestAdapter() {
+        const w = !App.isUsingClient ? unsafeWindow : window;
+        const registry = w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+        if (registry.version !== 1) return;
+        const destinations = () => Object.values(typeof TownList === 'undefined' ? {} : TownList).flatMap(town =>
+            (town.content || []).filter(c => c.constructor.name === 'BattleFrontierTownContent').map(content => ({town,content})));
+        const valid = owner => this.questOwner === owner && owner?.active && owner.isCurrent() && registry.movementOwner === owner;
+        const total = () => Number(App.game.statistics.battleFrontierTotalStagesCompleted());
+        registry.adapters.frontier = {
+            inspect:() => ({status:this.questStatus || 'ready',reason:this.questReason || '',
+                progress:Math.max(0,total()-(this.questInitial ?? total())),nextWake:this.questRetry || 0,
+                activities:destinations().map(({town,content}) => ({id:`frontier:${town.name}`,target:{kind:'frontier',name:town.name,region:town.region},
+                    unlocked:town.isUnlocked() && content.isUnlocked(),reason:'Battle Frontier destination locked',capabilities:['frontier'],rates:{}}))}),
+            acquire:owner => {
+                if (!owner?.active || !owner.isCurrent() || registry.movementOwner !== owner || this.questOwner && this.questOwner !== owner || BattleFrontierRunner.started()) return false;
+                this.questOwner=owner;this.questInitial=total();this.questStatus='ready';this.questRetry=0;return true;
+            },
+            apply:(owner,objective) => {
+                if (!valid(owner)) return false;
+                if (this.questStarted && !BattleFrontierRunner.started()) {
+                    this.questStarted=false;this.questRetry=Date.now()+60000;this.questStatus='waiting';this.questReason='Native defeat: wait before resuming from the remaining checkpoint';
+                    App.game.battleFrontier.leave();
+                }
+                if (Date.now()<this.questRetry) return true;
+                if (BattleFrontierRunner.started()) return true;
+                const entry=destinations().find(({town,content}) => (!objective.target?.name || town.name===objective.target.name) && town.isUnlocked() && content.isUnlocked());
+                if (!entry) {this.questStatus='blocked';this.questReason='No unlocked Battle Frontier destination';return false;}
+                const target={kind:'town',name:entry.town.name,region:entry.town.region};
+                if (registry.adapters.navigation?.suspend && !registry.adapters.navigation.suspend(owner)) {this.questStatus='waiting';this.questReason='Waiting for native battle/capture to finish';return false;}
+                if (!registry.adapters.navigation?.travel?.(owner,target)) {this.questStatus='waiting';this.questReason='Waiting for owned Frontier travel';return false;}
+                if (!valid(owner)) return false;
+                App.game.battleFrontier.enter();BattleFrontierRunner.start(true);
+                this.questStarted=true;this.questStatus='running';this.questReason='Counting actual native stages';return true;
+            },
+            release:owner => {
+                if (this.questOwner!==owner) return false;
+                if (this.questStarted) {
+                    BattleFrontierRunner.end();App.game.battleFrontier.leave();
+                }
+                this.questStarted=false;this.questOwner=null;this.questStatus='ready';this.questReason='';return true;
+            },
+        };
+        // These controls explicitly return control to the player before acting.
+        document.querySelector('#battleFrontierInformation')?.addEventListener('click',event => {
+            if (event.target.closest('a,button,input')) this.questOwner?.onManual?.('Manual Battle Frontier control');
+        },true);
+    }
+
     static overrideGameMethods() {
         const oldNextStage = BattleFrontierRunner.nextStage;
         BattleFrontierRunner.nextStage = function() {
             var result = oldNextStage.apply(this, arguments);
             // Stage ceiling check
-            if (!AutoBattleFrontier.battleFrontAttackCeil && AutoBattleFrontier.battleFrontCeil > 0) {
+            if (!AutoBattleFrontier.questOwner?.isCurrent() && !AutoBattleFrontier.battleFrontAttackCeil && AutoBattleFrontier.battleFrontCeil > 0) {
                 if (BattleFrontierRunner.stage() > AutoBattleFrontier.battleFrontCeil) {
                     AutoBattleFrontier.battleReset();
                 }
@@ -85,7 +134,7 @@ class AutoBattleFrontier {
         const oldPokemonAttack = BattleFrontierBattle.pokemonAttack;
         BattleFrontierBattle.pokemonAttack = function() {
             // Safety check the enemy exists (relevant for exiting the frontier)
-            if (AutoBattleFrontier.battleFrontAttackCeil && BattleFrontierBattle.enemyPokemon()) {
+            if (!AutoBattleFrontier.questOwner?.isCurrent() && AutoBattleFrontier.battleFrontAttackCeil && BattleFrontierBattle.enemyPokemon()) {
                 // Attack ceiling check
                 let clicksNeeded = Math.ceil(Battle.enemyPokemon().maxHealth() / App.game.party.calculatePokemonAttack(Battle.enemyPokemon().type1, Battle.enemyPokemon().type2, true));
                 if (clicksNeeded > AutoBattleFrontier.battleFrontAttackCeil) {
@@ -134,6 +183,7 @@ class AutoBattleFrontier {
     }
 
     static toggleBattleFrontAttackCeil() {
+        this.questOwner?.onManual?.('Manual Battle Frontier settings');
         this.battleFrontAttackCeil = (this.battleFrontAttackCeil + 1) % 3;
         if (this.battleFrontAttackCeil) {
             document.getElementById("bf-attack-ceil-start").classList.remove('btn-danger');
@@ -147,6 +197,7 @@ class AutoBattleFrontier {
     }
 
     static setBattleFrontCeil() {
+        this.questOwner?.onManual?.('Manual Battle Frontier settings');
         let inputVal = +document.getElementById('battle-front-input').value.replace(/,/g, '');
         this.battleFrontCeil = (Number.isInteger(inputVal) && inputVal > 0 ? inputVal : 0);
         localStorage.setItem("battleFrontCeil", this.battleFrontCeil);

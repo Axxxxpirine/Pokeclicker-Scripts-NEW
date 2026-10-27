@@ -297,3 +297,20 @@ test('one planning tick bounds native attack and encounter work and later ticks 
  // Outside a tick, public estimation also reads live state rather than a leftover memo.
  power=10000;assert.ok(r.nativeRates(r.currentPlan.primary,1).capture>r.currentPlan.primary.rates.capture);
 });
+
+for (const [waterCatchRate,stock] of [[100,10],[25,16]]) {
+ test(`disjoint capture types cannot share the same ball stock (Water catch rate ${waterCatchRate}%)`,()=>{
+  const {r,w,snapshot,activity}=fixture();
+  activity.types=[0,2];activity.rates={};activity.capabilities.push('captureType');
+  activity.encounters=[{name:'Normal',type:[0],catchRate:100},{name:'Water',type:[2],catchRate:waterCatchRate}];
+  w.PokemonFactory.catchRateHelper=rate=>rate+3;
+  snapshot.quests=[0,2].map(type=>({id:String(type),type:'CapturePokemonTypesQuest',target:{type},remaining:10,reward:100,known:true,active:true}));
+  snapshot.resources.balls=[stock,0,0];snapshot.resources.money=0;w.TownList={};
+  const candidate=r.buildCandidates(snapshot)[0];
+  // The same balls cannot fund ten Normal AND ten Water successes. A route-wide
+  // average also cannot price the extra failed Water attempts at 25% catch rate.
+  assert.equal(candidate.seconds,null);
+  assert.equal(candidate.score,0);
+  assert.match(candidate.reason,/supply|ball/i);
+ });
+}

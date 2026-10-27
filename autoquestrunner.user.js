@@ -336,6 +336,10 @@ class AutoQuestRunner {
         const unknown={seconds:null,reason:'Supply cost estimate unavailable for required standard balls'};
         // A shiny or Shadow encounter frequency is not inferred from ordinary captures.
         if (captures.some(q=>['CatchShiniesQuest','CatchShadowsQuest'].includes(q.type))) return unknown;
+        // A route-wide capture average cannot price a union of type objectives:
+        // disjoint types consume separate balls, while dual types can overlap.
+        // Keep costs unknown until that combined consumption is modeled.
+        if (new Set(captures.filter(q=>q.type==='CapturePokemonTypesQuest').map(q=>q.target.type)).size>1) return unknown;
         const ball=activity.pokeball ?? this.chooseBall(snapshot,activity), native=this.nativeRates(activity,ball);
         const probability=native.captureProbability || (activity.rates?.ball>0 ? activity.rates.capture/activity.rates.ball : 0);
         const tokens=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(activity.target.number,activity.target.region));

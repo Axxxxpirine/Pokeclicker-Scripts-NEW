@@ -383,3 +383,19 @@ test('autonomous runner uses real navigation across native route claims and next
  f.stats.routeKills[0][1](2);f.nav.tick(true);runner.tick();assert.equal(claims,2);
  f.w.MapHelper.moveToRoute(3,0);assert.equal(runner.active,false);runner.tick();assert.equal(claims,2);
 });
+test('owned town transit waits for capture, suspends objective and resumes same native session',()=>{
+ const f=setup(),a=f.w.PokeAutomationAdapters.adapters.navigation,owner=tokenFor(a);a.acquire(owner);
+ a.apply(owner,{target:{kind:'route',number:1,region:0},count:1,session:settings});const spent=f.nav.spent;
+ f.w.Battle.catching=()=>true;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),false);assert.equal(f.player.route,1);
+ f.w.Battle.catching=()=>false;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),true);assert.equal(f.player.route,0);f.nav.tick(true);assert.equal(f.player.town.name,'Home');assert.equal(f.nav.externalObjective,null);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.player.route,3);assert.equal(f.nav.spent,spent);
+ owner.active=false;assert.equal(a.travel(owner,{kind:'town',name:'Home',region:0}),false);assert.equal(f.player.route,3);
+});
+test('runner uses real owned native transit purchase and route resume without standalone shop loop',()=>{
+ const fs=require('node:fs'),path=require('node:path'),f=setup();f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');const r=f.w.AutoQuestRunner;
+ const ball={quantity:o(0)};f.game.pokeballs.pokeballs=[ball];const item={name:'Pokeball',type:0,currency:0,isAvailable:()=>true,isSoldOut:()=>false,totalPrice:n=>n*10,buy:n=>{ball.quantity(ball.quantity()+n);f.game.wallet.currencies[0](f.game.wallet.currencies[0]()-n*10);}};
+ f.towns.Home.content=[{parent:f.towns.Home,items:[item],isUnlocked:()=>true}];
+ const activity={id:'route:0:1',target:{kind:'route',number:1,region:0},unlocked:true,capabilities:['ball'],rates:{ball:1}};
+ const s={epoch:1,quests:[{id:'q',type:'UsePokeballQuest',target:{pokeball:0},remaining:2,known:true,active:true}],resources:{money:100,balls:[0]},activities:[activity],rates:{},commitments:{}};
+ f.w.MapHelper.moveToRoute(3,0);assert.equal(r.start(),true);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,0);assert.equal(ball.quantity(),0);r.executePlan(s,{primary:activity,reasons:[]});assert.equal(ball.quantity(),2);s.resources.balls[0]=2;r.executePlan(s,{primary:activity,reasons:[]});assert.equal(f.player.route,1);assert.equal(f.nav.settings.mode,'routes');assert.equal(f.game.wallet.currencies[0](),80);r.stop();
+});

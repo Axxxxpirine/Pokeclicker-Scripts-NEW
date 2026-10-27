@@ -238,7 +238,7 @@ class AutoQuestRunner {
     }
     static prepareActivity(activity, snapshot) {
         if (activity.target.kind !== 'route') return activity;
-        const matching = snapshot.quests.filter(q => this.policyMatches(q,activity));
+        const matching = snapshot.quests.filter(q => !q.claimed && q.remaining>0 && this.policyMatches(q,activity));
         const required = matching.find(q => q.type === 'UsePokeballQuest' && q.target.pokeball >= 0 && q.target.pokeball <= 2);
         const ball = required?.target.pokeball ?? activity.pokeball ?? this.chooseBall(snapshot,activity);
         const oak = App.game.oakItems;
@@ -291,8 +291,9 @@ class AutoQuestRunner {
         const exact=quests.find(q=>q.type==='UsePokeballQuest');
         if (exact && !(exact.target.pokeball>=0 && exact.target.pokeball<=2)) return {ready:false,reason:'Only standard balls are used automatically'};
         const magic=typeof OakItemType === 'undefined' ? 0 : OakItemType.Magic_Ball;
-        const needsCapture=quests.some(q=>['CapturePokemonsQuest','CapturePokemonTypesQuest','GainTokensQuest','CatchShiniesQuest','UsePokeballQuest'].includes(q.type)
-            || q.type==='UseOakItemQuest' && q.target.item===magic) || objective.recoverTokens;
+        const captureQuests=quests.filter(q=>['CapturePokemonsQuest','CapturePokemonTypesQuest','GainTokensQuest','CatchShiniesQuest','UsePokeballQuest'].includes(q.type)
+            || q.type==='UseOakItemQuest' && q.target.item===magic);
+        const needsCapture=captureQuests.length>0 || objective.recoverTokens;
         const oakItems=objective.oakItems || [];
         if (!needsCapture) return {ready:true,capture:{ball:-1},oakItems};
         const ball=exact?.target.pokeball ?? objective.pokeball ?? this.chooseBall(snapshot,objective);
@@ -306,7 +307,7 @@ class AutoQuestRunner {
         if (!exact && !(probability>0)) return {ready:false,ball,reason:'Native capture probability estimate unavailable'};
         const tokenYield=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(objective.target.number,objective.target.region));
         if (quests.some(q=>q.type==='GainTokensQuest') && !(tokenYield>0)) return {ready:false,ball,reason:'Native token yield estimate unavailable'};
-        const attempts=Math.max(1,...quests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
+        const attempts=Math.max(1,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
             : q.type==='GainTokensQuest' ? q.remaining/(probability*tokenYield) : q.remaining/probability));
         const quantity=Math.min(100,Math.ceil(attempts));
         const reserve=Math.max(0,...(objective.requirements || []).filter(p=>p.resource==='money').map(p=>Number(p.amount)||0));
@@ -404,7 +405,15 @@ class AutoQuestRunner {
     }
     static trackRecovery(snapshot, recovery, now=Date.now()) {
         const value=snapshot.resources[recovery.resource] || 0,key=`${snapshot.epoch}:${recovery.resource}:${recovery.activity.id}`;
-        if (!this.recoveryState || this.recoveryState.key!==key || value>this.recoveryState.value) this.recoveryState={key,value,time:now};
+        // Nested token -> ball -> money preparation must not reset its leaf clock.
+        if (this.recoveryEpoch!==snapshot.epoch || !this.recoveryStates) {this.recoveryEpoch=snapshot.epoch;this.recoveryStates=new Map();}
+        let state=this.recoveryStates.get(key);
+        if (state && value>state.value) {
+            // Earning the leaf prerequisite is useful progress for its waiting parents.
+            for (const pending of this.recoveryStates.values()) pending.time=now;
+        }
+        if (!state || value>state.value) {state={key,value,time:now};this.recoveryStates.set(key,state);}
+        this.recoveryState=state;
         if (now-this.recoveryState.time>120000) {this.reason='Resource recovery made no progress for two minutes';return false;}
         return true;
     }
@@ -439,7 +448,7 @@ class AutoQuestRunner {
         } catch (error) { this.stop(error.message); return false; }
         this.confirmedClaims = new WeakSet(); this.executing = null; this.currentPlan = null;
         this.observation = null; this.observedRates = {}; this.rateSamples = {};
-        this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.supplyBlocked=null;
+        this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
             const quests = registry.adapters.quests;
             if (quests && !this.acquired.some(e => e.name === 'quests')) {
@@ -508,7 +517,7 @@ class AutoQuestRunner {
             }
             return null;
         }
-        if (!primary.recoveryResource) this.recoveryState=null;
+        if (!primary.recoveryResource) {this.recoveryState=null;this.recoveryStates=null;}
         if (supply.oakItems.length && !this.equipOak(supply.oakItems)) {this.reason='Oak equipment unavailable or manually changed';return null;}
         if (App.game.pokeballs?.calculatePokeballToUse && !this.applyCapturePolicy(supply.capture)) {this.reason='Capture policy controlled by another session';return null;}
         return {...primary,capturePolicy:supply.capture};

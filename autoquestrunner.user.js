@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.2
+// @version       1.1.3
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -95,12 +95,14 @@ class AutoQuestRunner {
             const inspection = this.registry().adapters[name]?.inspect();
             for (const activity of inspection?.activities || []) {
                 const restriction=activity.target.kind==='frontier' ? this.departureRestriction(activity.target) : null;
-                activities.push({...activity,module:name,...(restriction ? {unlocked:false,reason:restriction} : {})});
+                const blocked = (activity.status ?? inspection.status) === 'blocked';
+                activities.push({...activity,module:name,...(blocked ? {unlocked:false,reason:activity.reason || inspection.reason} : {}),
+                    ...(restriction ? {unlocked:false,reason:restriction} : {})});
             }
             const native = {farm:App.game.farming,hatchery:App.game.breeding,mine:App.game.underground}[name];
             if (!inspection?.activities?.length && native?.canAccess?.()) {
                 const capabilities = {farm:['farmPoints'],hatchery:['hatch','capture','shiny'],mine:['layers','items']}[name];
-                activities.push({id:name,target:{kind:name},module:name,unlocked:true,capabilities,rates:context.rates?.[name] || {}});
+                activities.push({id:name,target:{kind:name},module:name,unlocked:false,reason:`${name} module unavailable`,capabilities,rates:context.rates?.[name] || {}});
             }
         }
         return activities;
@@ -479,6 +481,7 @@ class AutoQuestRunner {
         const owner = {active:true, isCurrent:() => owner.active && this.active && this.owner === owner,
             onManual:reason => { if (owner.isCurrent()) this.stop(reason); }};
         this.owner = owner; this.acquired = [];
+        registry.questOwner = owner;
         try {
             for (const name of new Set(names)) {
                 const adapter = registry.adapters[name];
@@ -490,11 +493,7 @@ class AutoQuestRunner {
         this.observation = null; this.observedRates = {}; this.rateSamples = {}; this.listStarted=null;
         this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
-            const quests = registry.adapters.quests;
-            if (quests && !this.acquired.some(e => e.name === 'quests')) {
-                if (!quests.acquire(owner)) { this.stop('Quests controlled by another session'); return false; }
-                this.acquired.push({name:'quests',adapter:quests});
-            }
+            if (!this.reconcileQuestOwnership()) return false;
             this.timer = setInterval(() => this.tick(owner),250);
             this.tick(owner);
         }
@@ -636,7 +635,8 @@ class AutoQuestRunner {
         const inspection=nav?.inspect();
         if (inspection?.status==='blocked') {this.reason=inspection.reason || 'Navigation blocked';return;}
         if (this.executing?.epoch===snapshot.epoch && this.executing.id===primary.id && !['done','ready'].includes(inspection?.status)) return;
-        if (this.apply('navigation',{target:primary.target,count:1,session:{moneyBudget:Number.MAX_SAFE_INTEGER,
+        if (this.apply('navigation',{target:primary.target,count:1,
+            encounters:snapshot.quests.some(q=>q.type === 'CatchShadowsQuest' && !q.claimed && q.remaining > 0 && primary.questIds?.includes(q.id)),session:{moneyBudget:Number.MAX_SAFE_INTEGER,
             tokenBudget:Number.MAX_SAFE_INTEGER,minutes:1440,stallMinutes:1440}})) {
             this.executing={id:primary.id,epoch:snapshot.epoch};
             this.reason=recovering ? recoveryReason : this.reason?.startsWith('Earning') ? this.reason : primary.reason || 'Working';
@@ -700,10 +700,21 @@ class AutoQuestRunner {
         } catch (error) {this.refreshPending=false;throw error;}
         this.listStarted=null;return true;
     }
+    static reconcileQuestOwnership() {
+        if (!this.owner?.isCurrent()) return false;
+        const adapter = this.registry().adapters.quests;
+        if (!adapter || this.acquired.some(e=>e.name === 'quests' && e.adapter === adapter)) return true;
+        if (!adapter.acquire(this.owner)) {
+            this.stop('Quests controlled by another session'); return false;
+        }
+        this.acquired.push({name:'quests',adapter});
+        return true;
+    }
     static tick(owner = this.owner) {
         if (!owner?.isCurrent() || this.ticking) return;
         this.ticking = true;
         try {
+            if (!this.reconcileQuestOwnership()) return;
             let snapshot = this.readQuestSnapshot(this.planningContext());
             this.observeProgress(snapshot);
             this.listStarted ||= {epoch:snapshot.epoch,time:Date.now(),whole:snapshot.quests.every(q=>!q.claimed && q.remaining===q.amount)};
@@ -763,6 +774,7 @@ class AutoQuestRunner {
         if (!this.active) return;
         this.releaseSupplies();
         this.owner.active = false; this.active = false;
+        if (this.registry().questOwner === this.owner) delete this.registry().questOwner;
         clearInterval(this.timer); this.timer = null;
         for (const {adapter} of this.acquired.reverse()) {
             try { adapter.release(this.owner, reason); } catch (error) { console.error('[Auto Quest Runner]', error); }

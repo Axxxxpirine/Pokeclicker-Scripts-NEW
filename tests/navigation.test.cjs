@@ -407,3 +407,28 @@ test('owned Frontier suspension clears pending movement and survives native Fron
  f.game.gameState=f.state.town;assert.equal(a.apply(t,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.player.route,3);
  t.active=false;a.release(t);assert.equal(a.suspend(t),false);
 });
+
+test('external Shadow encounter traversal is scoped to its owned objective and restores preferences', () => {
+ const f = setup();
+ const adapter = f.w.PokeAutomationAdapters.adapters.navigation;
+ const owner = {active:true,isCurrent(){return this.active;},onManual(){this.active=false;adapter.release(this);}};
+ assert.equal(adapter.acquire(owner), true);
+ f.eac.autoDungeonLootTier = 3;
+ let seen;
+ f.eac.autoDungeon = () => {seen = [f.eac.autoDungeonEncounterMode,f.eac.autoDungeonChestMode,f.eac.autoDungeonLootTier];};
+ adapter.apply(owner, {target:{kind:'dungeon',name:'Forest',region:0},count:1,encounters:true,session:settings});
+ f.nav.explore();
+ assert.deepEqual(seen, [true,false,3]);
+ assert.equal(f.eac.autoDungeonEncounterMode, false);
+ assert.equal(f.w.localStorage.getItem('autoDungeonEncounterMode'), null);
+ f.nav.externalObjective.encounters = false;
+ f.nav.explore();
+ assert.deepEqual(seen, [false,false,3]);
+ f.nav.externalObjective.encounters = true;
+ f.eac.autoDungeon = () => {throw new Error('path failed');};
+ const error = f.w.console.error;
+ f.w.console.error = () => {};
+ try {f.nav.explore();} finally {f.w.console.error = error;}
+ assert.equal(owner.active, false);
+ assert.equal(f.eac.autoDungeonEncounterMode, false);
+});

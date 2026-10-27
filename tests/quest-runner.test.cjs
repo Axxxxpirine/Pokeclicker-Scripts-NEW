@@ -59,7 +59,7 @@ test('native snapshot normalizes all eighteen classes and independent count targ
 });
 test('cold start explores native currently available route encounters and accessible background work',()=>{
  const f=setup(),r=f.w.AutoQuestRunner;f.w.Routes={regionRoutes:[{number:1,region:0,isUnlocked:()=>true,pokemon:{land:['Locked']}}]};f.w.RouteHelper={getAvailablePokemonList:()=>['Available']};f.w.pokemonMap={Available:{type:[2]},Locked:{type:[3]}};
- f.w.App.game.quests={questList:()=>[quest('CapturePokemonTypesQuest',{type:2}),quest('HatchEggsQuest')]};f.w.App.game.breeding={canAccess:()=>true};
+ f.w.App.game.quests={questList:()=>[quest('CapturePokemonTypesQuest',{type:2}),quest('HatchEggsQuest')]};f.w.App.game.breeding={canAccess:()=>true};f.w.PokeAutomationAdapters.adapters.hatchery={inspect:()=>({activities:[{id:'hatchery',target:{kind:'hatchery'},unlocked:true,capabilities:['hatch'],rates:{}}]})};
  const s=r.readQuestSnapshot(),p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.id,'route:0:1');assert.equal(p.primary.exploratory,true);assert.equal(p.primary.score,0);assert.equal(p.background[0].module,'hatchery');assert.deepEqual([...s.activities[0].types],[2]);
 });
 function nativeLocations(f){const town={name:'Shared Town',region:0,isUnlocked:()=>true};f.w.TownList={'Shared Town':town};f.w.GymList={'Special Gym':{parent:town,isUnlocked:()=>true}};const dungeon={name:'Shared Town',tokenCost:30,baseTokenCost:1,isUnlocked:()=>true,hasUnlockedBoss:()=>true};town.dungeon=dungeon;f.w.dungeonList={'Shared Town':dungeon};f.w.DungeonGuides={hired:()=>false};return {town,dungeon};}

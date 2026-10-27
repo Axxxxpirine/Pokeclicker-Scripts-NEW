@@ -63,7 +63,7 @@ These scripts automate actions or change the interface. Individual options can e
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
 | [Additional Visual Settings](additionalvisualsettings.user.js) | 3.0.2 | Hide selected battle visuals and add navigation shortcuts. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/additionalvisualsettings.user.js) |
-| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.2 | Adjustable auto clicking, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
+| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.3 | Adjustable auto clicking, income rates, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
 | [Auto Navigation](autonavigation.user.js) | 1.1.1 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
 | [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.6 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
 | [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.1 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
@@ -136,6 +136,8 @@ During a visible uncaught pursuit, the script attempts to capture an uncaught en
 ### Enhanced Auto Clicker and Auto Navigation
 
 Enhanced Auto Clicker adds **Auto Click**, an attack-rate control, **Auto Gym** and **Auto Dungeon**. Dungeon options control exploration, fights and chest targeting. Actual throughput depends on the game and capture delays.
+
+While Auto Click is ON, its statistics panel also shows **Money/s** and **Dungeon tokens/s**. These are gross earnings from all sources recorded by the game, so purchases and dungeon entry costs do not reduce them. Values update once per second and average the last ten samples (normally ten seconds), using actual elapsed time. The window resets when changing locations, restarting Auto Click or changing its statistics display settings. With Auto Click OFF, the values show a dash.
 
 Auto Navigation adds a separate panel above the battle view. Install both scripts, select an **Objective**, set its limits and press **Start** from a route or town.
 

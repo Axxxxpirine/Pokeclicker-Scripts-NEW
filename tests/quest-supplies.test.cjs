@@ -1,14 +1,14 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {load,observable:o}=require('./helpers.cjs');
+const {load,observable:o,Currency}=require('./helpers.cjs');
 function fixture(){
  const f=load('autoquestrunner.user.js','',{Preload:{hideSplashScreen(){}}});f.run('AutoQuestRunner.init()');const r=f.w.AutoQuestRunner,w=f.w;
- w.GameConstants={Pokeball:{None:-1},Currency:{money:0,dungeonToken:1}};
+ w.GameConstants={Pokeball:{None:-1},Currency};
  w.player={region:0,route:1,town:null,highestRegion:()=>0};w.MapHelper={accessToTown:()=>true};
  const balls=[0,0,0,99].map(n=>({quantity:o(n),catchTime:1000}));
  w.App.game.pokeballs={pokeballs:balls,calculatePokeballToUse:()=>3,getCatchBonus:b=>b*10,calculateCatchTime:()=>1000};
  w.App.game.party={calculatePokemonAttack:()=>100,calculateClickAttack:()=>0};w.PokemonFactory={routeHealth:()=>100,routeMoney:()=>20,routeDungeonTokens:()=>10,catchRateHelper:()=>100};
- w.App.game.wallet={currencies:[o(100000),o(0)]};w.PokemonHelper={getPokemonById:id=>({id,name:'Pidgey',type1:0,type2:-1})};
+ w.App.game.wallet={currencies:[o(100000),o(0),o(0)]};w.PokemonHelper={getPokemonById:id=>({id,name:'Pidgey',type1:0,type2:-1})};
  const town={name:'Mart',region:0,isUnlocked:()=>true};const item={name:'Pokeball',type:0,currency:0,isAvailable:()=>true,isSoldOut:()=>false,totalPrice:n=>n*n*10,buy(n){const price=this.totalPrice(n);if(price>w.App.game.wallet.currencies[0]())return;w.App.game.wallet.currencies[0](w.App.game.wallet.currencies[0]()-price);balls[0].quantity(balls[0].quantity()+n);}};
  const shop={parent:town,items:[item],isUnlocked:()=>true};town.content=[shop];w.TownList={Mart:town};
  r.active=true;r.owner={active:true,isCurrent:()=>r.active,onManual:()=>r.stop('Manual')};r.acquired=[];

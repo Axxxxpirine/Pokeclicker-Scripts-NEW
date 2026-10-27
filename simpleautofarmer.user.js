@@ -101,7 +101,7 @@ function initAutoFarm() {
                 questStatus={status:'blocked',reason:'Farm access locked',nextWake:Date.now()+1000};return true;
             }
             const berry = validBerry(objective.berryType) ? objective.berryType
-                : farming.berryInventory.findIndex(stock=>stock() > 0);
+                : farming.berryInventory.findIndex(stock=>stock() > (planState ? planReserve : 0));
             let progress=0;
             for (let index=0; index<plotCount; index++) {
                 const plot=farming.plotList[index];

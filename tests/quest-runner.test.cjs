@@ -54,11 +54,26 @@ test('native snapshot normalizes all eighteen classes and independent count targ
  const list=Object.keys(r.questMetrics).map(type=>quest(type,{type:4,berryType:5,item:1,pokeball:2,gymTown:'Pewter',dungeon:'Forest',route:2,region:0}));
  f.w.App.game.quests={questList:()=>list};const s=r.readQuestSnapshot();assert.equal(s.quests.length,18);
  for(const q of s.quests){assert.equal(q.remaining,10,q.type);assert.equal(q.known,true,q.type);}
- assert.equal(s.quests.find(q=>q.type==='DefeatGymQuest').target.name,'Pewter');
+ assert.equal(s.quests.find(q=>q.type==='DefeatGymQuest').target.gym,'Pewter');
  assert.equal(s.quests.find(q=>q.type==='HarvestBerriesQuest').target.berryType,5);
 });
 test('cold start explores native currently available route encounters and accessible background work',()=>{
  const f=setup(),r=f.w.AutoQuestRunner;f.w.Routes={regionRoutes:[{number:1,region:0,isUnlocked:()=>true,pokemon:{land:['Locked']}}]};f.w.RouteHelper={getAvailablePokemonList:()=>['Available']};f.w.pokemonMap={Available:{type:[2]},Locked:{type:[3]}};
  f.w.App.game.quests={questList:()=>[quest('CapturePokemonTypesQuest',{type:2}),quest('HatchEggsQuest')]};f.w.App.game.breeding={canAccess:()=>true};
  const s=r.readQuestSnapshot(),p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.id,'route:0:1');assert.equal(p.primary.exploratory,true);assert.equal(p.primary.score,0);assert.equal(p.background[0].module,'hatchery');assert.deepEqual([...s.activities[0].types],[2]);
+});
+function nativeLocations(f){const town={name:'Shared Town',region:0,isUnlocked:()=>true};f.w.TownList={'Shared Town':town};f.w.GymList={'Special Gym':{parent:town,isUnlocked:()=>true}};const dungeon={name:'Shared Town',tokenCost:30,baseTokenCost:1,isUnlocked:()=>true,hasUnlockedBoss:()=>true};town.dungeon=dungeon;f.w.dungeonList={'Shared Town':dungeon};f.w.DungeonGuides={hired:()=>false};return {town,dungeon};}
+test('native location cold start uses gym key plus parent town and dungeon capabilities',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner;nativeLocations(f);f.w.App.game.quests={questList:()=>[quest('DefeatGymQuest',{gymTown:'Special Gym'})]};let s=r.readQuestSnapshot(),p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.target.name,'Shared Town');assert.equal(p.primary.target.gym,'Special Gym');
+ f.w.App.game.quests.questList=()=>[quest('DefeatDungeonQuest',{dungeon:'Shared Town'})];s=r.readQuestSnapshot();s.resources.dungeonToken=1000;p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary.target.kind,'dungeon');assert.equal(p.primary.exploratory,true);
+});
+test('native destination unlock bosses guides and departure gate activities',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner,{town,dungeon}=nativeLocations(f);f.w.App.game.quests={questList:()=>[quest('DefeatGymQuest',{gymTown:'Special Gym'}),quest('DefeatDungeonQuest',{dungeon:'Shared Town'})]};
+ f.w.GymList['Special Gym'].isUnlocked=()=>false;dungeon.isUnlocked=()=>false;let s=r.readQuestSnapshot();assert.equal(r.buildCandidates(s).length,0);
+ dungeon.isUnlocked=()=>true;dungeon.hasUnlockedBoss=()=>false;s=r.readQuestSnapshot();assert.equal(r.buildCandidates(s).length,0);
+ dungeon.hasUnlockedBoss=()=>true;f.w.DungeonGuides.hired=()=>true;s=r.readQuestSnapshot();const waiting=r.buildCandidates(s);assert.equal(waiting[0].prerequisites.some(p=>p.resource==='guide'),true);assert.equal(r.selectPlan(s,waiting).primary,null);
+ f.w.DungeonGuides.hired=()=>false;town.region=1;f.w.player={region:0,highestRegion:()=>1};f.w.GameConstants={DockTowns:['Dock']};s=r.readQuestSnapshot();assert.equal(r.buildCandidates(s).length,0);assert.match(r.selectPlan(s,[]).reasons.join(' '),/departure|dock/i);
+});
+test('dungeon total recovery prices actual tokenCost for remaining clears separately from entry',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner;nativeLocations(f);f.w.App.game.quests={questList:()=>[quest('DefeatDungeonQuest',{dungeon:'Shared Town',amount:3,initial:()=>0,focus:()=>0})]};let s=r.readQuestSnapshot({rates:{'dungeon:Shared Town':{dungeon:1},dungeonToken:10}});s.resources.dungeonToken=30;const c=r.buildCandidates(s)[0];assert.equal(c.requirements[0].amount,30);assert.equal(c.entryPrerequisites.length,0);assert.equal(c.prerequisites[0].amount,90);assert.equal(c.prerequisites[0].missing,60);assert.equal(c.seconds,9);
 });

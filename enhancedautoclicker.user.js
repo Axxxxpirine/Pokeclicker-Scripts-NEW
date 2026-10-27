@@ -5,7 +5,7 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.6.2
+// @version       3.6.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -67,6 +67,8 @@ class EnhancedAutoClicker {
         ticks: null,
         clicks: null,
         enemies: null,
+        money: null,
+        dungeonTokens: null,
         areaHealth: null,
     };
     // Computed observables for visual bindings
@@ -206,8 +208,8 @@ class EnhancedAutoClicker {
             elem.addEventListener('click', () => { EnhancedAutoClicker.changeAutoDungeonLootTier(elem.getAttribute('value')); });
         });
 
-        addGlobalStyle('#auto-click-info { display: flex; flex-direction: row; justify-content: center; }');
-        addGlobalStyle('#auto-click-info > div { width: 33.3%; }');
+        addGlobalStyle('#auto-click-info { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }');
+        addGlobalStyle('#auto-click-info > div { overflow-wrap: anywhere; }');
         addGlobalStyle('#click-rate-cont { display: flex; flex-direction: column; align-items: stretch; }');
         addGlobalStyle('#auto-dungeon-loottier-dropdown img { max-height: 30px; width: auto; }');
 
@@ -946,11 +948,15 @@ class EnhancedAutoClicker {
         this.autoClickCalcTracker.ticks = [0];
         this.autoClickCalcTracker.clicks = [App.game.statistics.clickAttacks()];
         this.autoClickCalcTracker.enemies = [App.game.statistics.totalPokemonDefeated()];
+        this.autoClickCalcTracker.money = [App.game.statistics.totalMoney()];
+        this.autoClickCalcTracker.dungeonTokens = [App.game.statistics.totalDungeonTokens()];
         this.calculateAreaHealth();
         document.getElementById('auto-click-info').innerHTML = `<div>${this.autoClickCalcEfficiencyDisplayMode == 0 ? 'Clicker Efficiency' : 'Ticks/s'}:<br><div id="tick-efficiency" style="font-weight:bold;">-</div></div>
             <div>${this.autoClickCalcDamageDisplayMode == 0 ? 'Click Attacks/s' : 'DPS'}:<br><div id="clicks-per-second" style="font-weight:bold;">-</div></div>
             <div>Req. ${this.autoClickCalcDamageDisplayMode == 0 ? 'Clicks' : 'Click Damage'}:<br><div id="req-clicks" style="font-weight:bold;">-</div></div>
-            <div>Enemies/s:<br><div id="enemies-per-second" style="font-weight:bold;">-</div></div>`;
+            <div>Enemies/s:<br><div id="enemies-per-second" style="font-weight:bold;">-</div></div>
+            <div title="Money earned per second over the last ten samples, excluding spending">Money/s:<br><div id="money-per-second" style="font-weight:bold;">-</div></div>
+            <div title="Dungeon tokens earned per second over the last ten samples, excluding spending">Dungeon tokens/s:<br><div id="dungeon-tokens-per-second" style="font-weight:bold;">-</div></div>`;
         if (this.autoClickState()) {
             // Start calculator
             this.autoClickCalcLoop = setInterval(() => EnhancedAutoClicker.calcClickStats(), 1000);
@@ -964,6 +970,7 @@ class EnhancedAutoClicker {
      * -Required number of clicks or click attack damage to one-shot the current location, depending on display mode
      * --Ignores dungeon bosses and chest health increases
      * -Enemies defeated per second
+     * -Money and dungeon tokens earned per second (gross earnings, excluding spending)
      * Statistics are reset when the player changes locations
      */
     static calcClickStats() {
@@ -1031,6 +1038,22 @@ class EnhancedAutoClicker {
         avgEnemies = avgEnemies / actualElapsed;
         elem.innerHTML = avgEnemies.toLocaleString('en-US', {maximumFractionDigits: 1});
         elem.style.color = 'gold';
+
+        // Lifetime earnings exclude purchases and dungeon entry costs.
+        // Use elapsed wall time so delayed timer callbacks don't inflate income.
+        const incomeElapsed = (Date.now() - this.autoClickCalcTracker.lastUpdate.at(-1)) / 1000;
+        for (const [key, total, id] of [
+            ['money', App.game.statistics.totalMoney(), 'money-per-second'],
+            ['dungeonTokens', App.game.statistics.totalDungeonTokens(), 'dungeon-tokens-per-second'],
+        ]) {
+            const history = this.autoClickCalcTracker[key];
+            const rate = incomeElapsed > 0 ? Math.max(0, total - history.at(-1)) / incomeElapsed : 0;
+            const display = document.getElementById(id);
+            display.textContent = rate.toLocaleString('en-US', {maximumFractionDigits: 1});
+            display.style.color = 'gold';
+            history.unshift(total);
+            if (history.length > 10) history.pop();
+        }
 
         // Make room for next second's stats tracking
         // Add new entries to start of array for easier incrementing

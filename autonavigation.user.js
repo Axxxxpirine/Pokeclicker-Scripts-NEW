@@ -212,12 +212,12 @@ class AutoNavigator {
         if (!this.valid(settings)) { this.status('Invalid settings. Counts and budgets must be finite whole numbers.'); return false; }
         const w = !App.isUsingClient ? unsafeWindow : window;
         const clicker = w.EnhancedAutoClicker || (typeof EnhancedAutoClicker !== 'undefined' ? EnhancedAutoClicker : null);
+        if (this.externalOwner && !this.externalStarting) { this.externalOwner.onManual('Manual navigation control'); if (this.externalOwner) return false; }
         const registry = w.PokeAutomationAdapters;
         if (registry?.clickerOwner && registry.clickerOwner !== this && !(this.externalStarting && registry.clickerOwner === this.externalOwner)) {
             this.status('Clicker is controlled by another session'); return false;
         }
         if (!clicker || clicker.navigationVersion !== 1) { this.status('Install the fork’s updated Enhanced Auto Clicker first.'); return false; }
-        if (this.externalOwner && !this.externalStarting) { this.externalOwner.onManual('Manual navigation control'); if (this.externalOwner) return false; }
         if (this.active) this.stop('Restarted',true);
         if (![GameConstants.GameState.town,GameConstants.GameState.fighting].includes(App.game.gameState) || DungeonGuides.hired() || DungeonBattle.catching()) {
             this.status('Start from a route or town with Dungeon Guides stopped.'); return false;

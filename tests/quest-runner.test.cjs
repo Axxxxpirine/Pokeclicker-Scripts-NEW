@@ -10,3 +10,9 @@ test('failed shared resource acquisition releases earlier module and invalidates
  f.w.PokeAutomationAdapters.adapters.navigation={inspect:()=>({status:'blocked'}),acquire:()=>false,apply:()=>false,release:()=>assert.fail('unacquired release')};
  assert.equal(r.start(['clicker','navigation']),false);assert.equal(release,1);assert.equal(token.isCurrent(),false);assert.equal(r.active,false);
 });
+test('manual cancellation releases all shared leases before returning control',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner,registry=f.w.PokeAutomationAdapters;
+ for(const name of ['navigation','clicker'])registry.adapters[name]={inspect:()=>({status:'ready'}),acquire:owner=>(registry[name]=owner,true),apply:()=>true,release:owner=>{assert.equal(owner.isCurrent(),false);registry[name]=null;}};
+ assert.equal(r.start(['navigation','clicker']),true);const owner=r.owner;owner.onManual('Manual navigation control');
+ assert.equal(r.active,false);assert.equal(registry.navigation,null);assert.equal(registry.clicker,null);assert.equal(r.apply('navigation',{}),false);
+});

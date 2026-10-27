@@ -361,3 +361,14 @@ test('manual native spending control during temporary disable retains user choic
  f.eac.toggleAutoDungeon();assert.equal(owner.active,false);assert.equal(f.eac.autoDungeonState(),true);assert.equal(f.eac.autoGymState(),false);
  assert.equal(f.w.localStorage.getItem('autoDungeonState'),'true');
 });
+test('native navigation Start cancels its owning runner before shared-resource checks',()=>{
+ for(const names of [['navigation'],['navigation','clicker'],['clicker','navigation']]) {
+  const f=setup();installNativeClickerControls(f);
+  const fs=require('node:fs'),path=require('node:path');f.run(fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8'));f.run('AutoQuestRunner.init()');
+  const runner=f.w.AutoQuestRunner;assert.equal(runner.start(names),true);const owner=runner.owner;
+  assert.equal(runner.apply('navigation',{target:{kind:'route',number:3,region:0},count:2}),true);
+  assert.equal(f.nav.start(settings),true);assert.equal(runner.active,false);assert.equal(owner.isCurrent(),false);
+  assert.equal(f.nav.active,true);assert.equal(f.nav.externalOwner,null);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+  assert.equal(f.w.PokeAutomationAdapters.clickerOwner,f.nav);assert.equal(f.player.route,1);
+ }
+});

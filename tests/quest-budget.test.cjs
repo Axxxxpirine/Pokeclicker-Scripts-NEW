@@ -29,3 +29,11 @@ test('quest lease suspends stale reset callbacks and resumes unchanged enabled s
  assert.equal(adapter.inspect().slots,3);assert.equal(adapter.acquire(owner),true);assert.equal(f.timers.size,0);old();assert.equal(f.calls,0);assert.equal(f.timers.size,0);
  owner.active=false;adapter.release(owner);assert.equal(f.timers.size,1);f.tick();assert.equal(f.calls,1);
 });
+test('manual legacy OFF commits before lease release and cannot claim accept or refresh',()=>{
+ const f=setup({autoQuestEnabled:true,autoQuestResetState:true,autoQuestRefreshBudget:300});const adapter=f.w.PokeAutomationAdapters.adapters.quests;let claims=0,begins=0;
+ const owner={active:true,isCurrent:()=>owner.active,onManual(){owner.active=false;adapter.release(owner);}};adapter.acquire(owner);
+ f.quests.claimQuest=()=>claims++;f.quests.beginQuest=()=>begins++;
+ const done=()=>true;done.subscribe=()=>({dispose(){}});const pending=()=>false;pending.subscribe=()=>({dispose(){}});
+ f.quests.questList().push({isCompleted:done,claimed:()=>false,inProgress:()=>true,constructor:{name:'A'}},{isCompleted:pending,claimed:()=>false,inProgress:()=>false,constructor:{name:'A'}});
+ f.w.document.getElementById('toggle-auto-quest').click();f.tick();assert.equal(owner.active,false);assert.equal(claims,0);assert.equal(begins,0);assert.equal(f.calls,0);
+});

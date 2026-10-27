@@ -220,7 +220,7 @@ class AutoQuestRunner {
                 this.acquired.push({name, adapter});
             }
         } catch (error) { this.stop(error.message); return false; }
-        this.claimAttempts = new WeakSet(); this.executing = null; this.currentPlan = null;
+        this.confirmedClaims = new WeakSet(); this.executing = null; this.currentPlan = null;
         this.observation = null; this.observedRates = {}; this.rateSamples = {};
         if (App.game.quests?.questList) {
             const quests = registry.adapters.quests;
@@ -290,9 +290,15 @@ class AutoQuestRunner {
             // claim per pass and rediscover before any subsequent native action.
             for (const entry of snapshot.quests.filter(q => q.active && !q.claimed && !q.remaining)) {
                 const current = this.resolveQuest(entry,snapshot.epoch);
-                if (!owner.isCurrent() || !current || this.claimAttempts.has(current.native)) continue;
-                this.claimAttempts.add(current.native);
+                if (!owner.isCurrent() || !current || this.confirmedClaims.has(current.native)) continue;
                 App.game.quests.claimQuest(this.questObjects.indexOf(current.native));
+                const after = this.readQuestSnapshot(this.planningContext());
+                if (this.read(current.native.claimed) || !after.quests.some(q => q.native === current.native)) {
+                    this.confirmedClaims.add(current.native);
+                }
+                // A deferred native completion computed may have refused this
+                // attempt. Leave it eligible on a later reconciliation pass.
+                // The ticking guard prevents reentrant attempts in this pass.
                 return;
             }
             const slots = this.registry().adapters.quests?.inspect().slots ?? (Number(this.read(App.game.quests.questSlots)) || 1);

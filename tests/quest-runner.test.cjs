@@ -101,3 +101,8 @@ test('runtime measures useful target progress and drops samples when list identi
  const t=loopFixture();let now=1000;t.f.w.Date.now=()=>now;t.r.start();now+=1000;t.complete();const rates=t.r.observedRates['route:0:1'];assert.equal(Object.values(rates)[0],1);
  t.f.tick();assert.equal(Object.keys(t.r.observedRates).length,0);t.r.stop();
 });
+test('native claim refusal retries after deferred completion settles and confirms only one success',()=>{
+ const t=loopFixture('route',true),native=t.f.w.App.game.quests.claimQuest;let attempts=0,settled=false;
+ t.f.w.App.game.quests.claimQuest=i=>{attempts++;if(settled)native(i);};t.r.start();t.complete();assert.equal(attempts,1);assert.equal(t.counts().claimed,0);
+ t.flush();settled=true;t.f.tick();assert.equal(attempts,2);assert.equal(t.counts().claimed,1);t.f.tick();assert.equal(attempts,2);assert.equal(t.counts().accepted,2);t.r.stop();
+});

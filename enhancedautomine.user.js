@@ -31,7 +31,39 @@ var autoMineSellReserves = loadAutoMineReserves();
 var autoMineSession;
 var autoMineLastRateUpdate = -Infinity;
 
+var questMineOwner=null, questMinePrevious, questMineApplied=false, questMineStatus={status:'ready',progress:0,nextWake:0};
+function registerQuestMineAdapter() {
+    const w=!App.isUsingClient ? unsafeWindow : window;
+    const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    registry.adapters.mine={
+        inspect:()=>({...questMineStatus,activities:[{id:'mine',target:{kind:'mine'},unlocked:App.game.underground.canAccess(),
+            capabilities:['layers','items'],rates:{}}]}),
+        acquire(owner) {if (questMineOwner && questMineOwner !== owner) return false;
+            questMineOwner=owner;questMinePrevious=mineState;questMineApplied=false;clearTimeout(autoMineTimer);autoMineTimer=undefined;return true;},
+        apply(owner) {
+            if (owner !== questMineOwner || !owner?.active || !owner.isCurrent()) return false;
+            if (questMineApplied && mineState !== true) {owner.onManual('Manual mining state');return false;}
+            mineState=true;questMineApplied=true;
+            const underground=App.game.underground;
+            if (!underground.canAccess()) {questMineStatus={status:'blocked',reason:'Underground locked',nextWake:Date.now()+1000};return true;}
+            // Native generateMine initializes its own discovery timer and rewards.
+            // Never replace an unfinished or currently searching mine.
+            if (!underground.mine || underground.mine.completed || underground.mine.itemsFound >= underground.mine.itemsBuried) {
+                if (underground.battery?.toJSON?.()?.activeDischargeID != null) {autoMineWait('Battery discharging — waiting for animation',100);return true;}
+                if (typeof underground.generateMine !== 'function') {questMineStatus={status:'blocked',reason:'Native mine search unavailable'};return true;}
+                underground.generateMine(underground.autoSearchMineType);
+            }
+            doAutoMine();return true;
+        },
+        release(owner,reason='') {if (owner !== questMineOwner) return;
+            if (questMineApplied && mineState === true) mineState=questMinePrevious;
+            questMineOwner=null;questMineStatus={status:'ready',progress:0,nextWake:0};
+            if (!/manual/i.test(reason)) updateAutoMineTimer();}
+    };
+}
+
 function initAutoMine() {
+    registerQuestMineAdapter();
     if (document.getElementById('auto-mine-start')) {
         return;
     }
@@ -60,6 +92,10 @@ function initAutoMine() {
     document.getElementById('auto-mine-battery').addEventListener('click', toggleAutoMineBattery);
     document.getElementById('auto-sell-treasure').addEventListener('click', autoSellTreasure);
     initAutoMineReserveControls();
+    for (const element of controls.querySelectorAll('button,input,select')) {
+        if (element.id === 'auto-mine-start') continue;
+        for (const event of ['click','change']) element.addEventListener(event,()=>questMineOwner?.onManual('Manual mining settings'),true);
+    }
     layersMined = App.game.statistics.undergroundLayersMined();
     if (mineState) startAutoMineSession();
     updateAutoMineDisplay(mineState ? 'Ready' : 'Stopped', true);
@@ -76,7 +112,7 @@ function updateAutoMineTimer() {
 
 function runAutoMine() {
     autoMineTimer = undefined;
-    if (!mineState) return;
+    if (!mineState || questMineOwner) return;
     try {
         const delay = doAutoMine();
         // One action per callback, no catch-up bursts after a suspended tab.
@@ -89,7 +125,9 @@ function runAutoMine() {
 }
 
 function startAutoMine() {
-    setAutoMineState(!mineState);
+    const requested=!mineState;
+    questMineOwner?.onManual('Manual mining control');
+    setAutoMineState(requested);
 }
 
 function setAutoMineState(enabled) {
@@ -118,7 +156,7 @@ function doAutoMine() {
     if (!mineState) return autoMineWait('Stopped');
     if (!underground.canAccess()) return autoMineWait('Waiting for Underground access');
     const mined = App.game.statistics.undergroundLayersMined();
-    if (sellTreasureState && autoMineReservesValid && autoMineReserveInputsValid && layersMined !== undefined && mined > layersMined) {
+    if (!questMineOwner && sellTreasureState && autoMineReservesValid && autoMineReserveInputsValid && layersMined !== undefined && mined > layersMined) {
         for (const item of UndergroundItems.list) {
             if (item.isSellable() && !item.sellLocked()) {
                 const stock = player.itemList[item.itemName]?.();
@@ -233,6 +271,7 @@ function chooseAutoMineAction(mine, tools) {
 }
 
 function autoMineWait(status, delay = 1000) {
+    if (questMineOwner) questMineStatus={status:'waiting',reason:status,nextWake:Date.now()+delay,progress:App.game.statistics.undergroundLayersMined()};
     updateAutoMineDisplay(status);
     return delay;
 }
@@ -341,6 +380,7 @@ function initAutoMineReserveControls() {
 }
 
 function toggleAutoMineBattery(event) {
+    questMineOwner?.onManual('Manual mining settings');
     autoMineBatteryState = !autoMineBatteryState;
     event.currentTarget.classList.replace(...(autoMineBatteryState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
     event.currentTarget.textContent = `Auto Battery [${autoMineBatteryState ? 'ON' : 'OFF'}]`;
@@ -349,6 +389,7 @@ function toggleAutoMineBattery(event) {
 }
 
 function autoSellTreasure(event) {
+    questMineOwner?.onManual('Manual mining settings');
     sellTreasureState = !sellTreasureState;
     event.currentTarget.classList.replace(...(sellTreasureState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
     event.currentTarget.textContent = `Auto Sell Treasure [${sellTreasureState ? 'ON' : 'OFF'}]`;

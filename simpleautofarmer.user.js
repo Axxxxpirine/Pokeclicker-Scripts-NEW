@@ -69,12 +69,58 @@ function initAutoFarm() {
     FarmController.selectedBerry(plantSelected);
     FarmController.navigateIndex(Math.floor(plantSelected / FarmController.BERRIES_PER_PAGE));
 
+    let questOwner = null, questStatus = {status:'ready',reason:'',progress:0,nextWake:0};
+    const questWindow = !App.isUsingClient ? unsafeWindow : window;
+    const registry = questWindow.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    const validQuestOwner = owner => owner === questOwner && owner?.active && owner.isCurrent();
+    registry.adapters.farm = {
+        inspect:() => ({...questStatus,activities:[{id:'farm:points',target:{kind:'farm'},
+            unlocked:typeof farming.canAccess !== 'function' || farming.canAccess(),capabilities:['farmPoints'],rates:{}},
+            ...Array.from(farming.berryInventory,(_,berryType)=>({
+            id:`farm:${berryType}`,target:{kind:'farm'},berryType,unlocked:typeof farming.canAccess !== 'function' || farming.canAccess(),
+            capabilities:['berries'],rates:{}}))]}),
+        acquire(owner) { if (questOwner && questOwner !== owner) return false; questOwner=owner; return true; },
+        apply(owner, objective) {
+            if (!validQuestOwner(owner)) return false;
+            if (typeof farming.canAccess === 'function' && !farming.canAccess()) {
+                questStatus={status:'blocked',reason:'Farm access locked',nextWake:Date.now()+1000};return true;
+            }
+            const berry = validBerry(objective.berryType) ? objective.berryType
+                : farming.berryInventory.findIndex(stock=>stock() > 0);
+            let progress=0, growing=false;
+            for (let index=0; index<plotCount; index++) {
+                const plot=farming.plotList[index];
+                // Designated mutation plots remain commitments even while the mode is OFF.
+                if (!plot || !plot.isUnlocked || plot.isSafeLocked || validBerry(mutationPlan[index])) continue;
+                if (plot.berry !== -1) {
+                    if ((objective.berryType == null || plot.berry === berry) && typeof PlotStage !== 'undefined' && plot.stage?.() === PlotStage.Berry) {
+                        farming.harvest(index);progress++;
+                    } else if (objective.berryType == null || plot.berry === berry) growing=true;
+                }
+                if (plot.berry === -1 && validBerry(berry) && farming.berryInventory[berry]() > (planState ? planReserve : 0)) {
+                    farming.plant(index,berry);growing=true;
+                }
+            }
+            const missing=!validBerry(berry) || !(farming.berryInventory[berry]() > 0);
+            questStatus={status:missing && !growing ? 'blocked':'waiting',progress,
+                reason:missing && !growing ? 'Requested berry stock absent, no supported native acquisition available':'Waiting for natural berry growth',nextWake:Date.now()+1000};
+            return true;
+        },
+        release(owner) {if (questOwner === owner) {questOwner=null;questStatus={status:'ready',progress:0,nextWake:0};}}
+    };
     createMenu();
+    // All explicit farm controls yield ownership before their existing handlers run.
+    for (const element of document.querySelectorAll('#auto-farm-controls button,#auto-farm-controls input,#auto-farm-controls select')) {
+        if (element.tagName === 'BUTTON' || element.tagName === 'INPUT' || element.tagName === 'SELECT') {
+            for (const event of ['click','change']) element.addEventListener(event,()=>questOwner?.onManual('Manual farm control'),true);
+        }
+    }
     checkFarmDeadline();
     toggleFarmLoop();
 
     function createMenu() {
         var elemAF = document.createElement("div");
+        elemAF.id = "auto-farm-controls";
         var divMenu1 = document.createElement("div");
         var divMenu2 = document.createElement("div");
         var divMenu3 = document.createElement("div");
@@ -332,6 +378,7 @@ function initAutoFarm() {
     }
 
     function autoFarmTick() {
+        if (questOwner) return;
         // Check wall-clock time before any action, including after sleep or reload.
         if (checkFarmDeadline()) return;
         if (catchState) {

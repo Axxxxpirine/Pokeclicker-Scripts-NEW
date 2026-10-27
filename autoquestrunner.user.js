@@ -523,6 +523,29 @@ class AutoQuestRunner {
         return {...primary,capturePolicy:supply.capture};
     }
     static executePlan(snapshot, plan) {
+        const wanted=new Set((plan.background || []).map(a=>a.module));
+        for (const entry of [...this.acquired]) {
+            if (['farm','hatchery','mine'].includes(entry.name) && !wanted.has(entry.name)) {
+                entry.adapter.release(this.owner,'Objective complete');
+                this.acquired=this.acquired.filter(e=>e !== entry);
+            }
+        }
+        for (const activity of plan.background || []) {
+            const name=activity.module, adapter=this.registry().adapters[name];
+            if (!adapter) {plan.reasons.push(`${name} module unavailable`);continue;}
+            if (!this.acquired.some(e=>e.name === name)) {
+                if (!adapter.acquire(this.owner)) continue;
+                this.acquired.push({name,adapter});
+            }
+            const quest=snapshot.quests.find(q=>activity.questIds?.includes(q.id) && q.active && !q.claimed && q.remaining > 0);
+            adapter.apply(this.owner,{...quest?.target,berryType:activity.berryType ?? quest?.target.berryType,type:activity.type ?? quest?.target.type});
+        }
+        // Hatching and leveling breeders need real route battles even if no route
+        // directly contributes to the accepted quests. Farm/mine waits need none.
+        if (!plan.primary && (plan.background || []).some(a=>a.module === 'hatchery') && this.acquired.some(e=>e.name === 'hatchery')) {
+            const route=snapshot.activities.find(a=>a.unlocked && a.target.kind === 'route');
+            if (route) plan.primary={...route,supportsBreeding:true};
+        }
         const nav=this.acquired.find(e=>e.name==='navigation')?.adapter;
         let primary=plan.primary, recovering=false;
         // A cost prerequisite is an executable preparation objective, not a dead end.

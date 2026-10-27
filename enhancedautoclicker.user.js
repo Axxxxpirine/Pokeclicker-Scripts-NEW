@@ -87,7 +87,54 @@ class EnhancedAutoClicker {
         this.overrideDungeonRunner();
     }
 
+    static registerAutomationAdapter() {
+        const w = !App.isUsingClient ? unsafeWindow : window;
+        const registry = w.PokeAutomationAdapters ||= {version:1, adapters:Object.create(null), movementOwner:null};
+        if (registry.version !== 1 || registry.adapters.clicker) return;
+        let owner = null, snapshot, expected, internal = false;
+        const persisted = action => {
+            const previous = localStorage.getItem('autoClickState');
+            try { return this.navigationOwner?.active ? this.navigationOwner.own(action) : action(); }
+            finally { previous === null ? localStorage.removeItem('autoClickState') : localStorage.setItem('autoClickState',previous); }
+        };
+        registry.adapters.clicker = {
+            inspect:() => ({status:owner ? 'running' : 'ready', enabled:this.autoClickState()}),
+            acquire:token => {
+                if (!token?.active || !token.isCurrent() || (owner && owner !== token) || (registry.movementOwner && registry.movementOwner !== token)) return false;
+                if (!owner) { owner = token; snapshot = expected = this.autoClickState(); }
+                return true;
+            },
+            apply:(token, objective) => {
+                if (owner !== token || !token.active || !token.isCurrent() || typeof objective?.enabled !== 'boolean') return false;
+                internal = true;
+                try { persisted(() => { if (this.autoClickState() !== objective.enabled) this.toggleAutoClick(); }); expected = this.autoClickState(); }
+                finally { internal = false; }
+                return true;
+            },
+            release:token => {
+                if (owner !== token) return false;
+                owner = null; internal = true;
+                try { persisted(() => { if (this.autoClickState() === expected && expected !== snapshot) this.toggleAutoClick(); }); }
+                finally { internal = false; }
+                return true;
+            },
+        };
+        // Native UI controls cancel ownership before taking effect.
+        for (const name of ['toggleAutoClick','toggleAutoGym','toggleAutoDungeon']) {
+            const original = this[name];
+            this[name] = function(...args) {
+                if (owner && !internal && !this.navigationOwner?.internal) {
+                    const wanted = name === 'toggleAutoClick' ? !this.autoClickState() : null;
+                    owner.onManual('Manual clicker control');
+                    if (wanted !== null && this.autoClickState() === wanted) return;
+                }
+                return original.apply(this,args);
+            };
+        }
+    }
+
     static initAutoClicker() {
+        this.registerAutomationAdapter();
         const battleView = document.getElementsByClassName('battle-view')[0];
 
         var elemAC = document.createElement("table");

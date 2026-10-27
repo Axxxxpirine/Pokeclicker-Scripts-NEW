@@ -279,3 +279,45 @@ test('missing departure dock data fails closed only for travel to another region
  assert.equal(f.nav.move({kind:'route',number:1,region:0}),false);
  assert.equal(f.nav.move({kind:'route',number:29,region:1}),true);
 });
+
+test('external objectives share ownership, budgets and ephemeral preferences',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;
+ const owner={active:true,isCurrent(){return this.active;},onManual(){this.active=false;a.release(this,'Manual travel');}};
+ const saved=f.w.localStorage.getItem('autoNavigationSettings');
+ assert.equal(a.acquire(owner),true);assert.equal(a.acquire(owner),true);
+ assert.equal(a.acquire({active:true,isCurrent:()=>true}),false);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:1,region:0},count:2}),true);
+ assert.equal(f.player.route,1);assert.equal(f.w.localStorage.getItem('autoNavigationSettings'),saved);
+ f.stats.routeKills[0][1](2);f.nav.tick(true);assert.equal(a.inspect().status,'done');assert.equal(f.nav.active,true);
+ const spent=f.nav.spent;assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),true);assert.equal(f.nav.spent,spent);
+ f.w.MapHelper.moveToRoute(1,0);assert.equal(owner.active,false);assert.equal(f.nav.active,false);assert.equal(f.player.route,1);
+ assert.equal(a.apply(owner,{target:{kind:'route',number:3,region:0},count:1}),false);
+});
+test('external pending objective never moves during capture',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;const owner={active:true,isCurrent:()=>true,onManual(){}};
+ a.acquire(owner);f.w.Battle.catching=()=>true;
+ a.apply(owner,{target:{kind:'route',number:3,region:0},count:1});assert.equal(f.player.route,0);assert.equal(a.inspect().status,'waiting');
+ f.w.Battle.catching=()=>false;f.nav.tick(true);assert.equal(f.player.route,3);
+});
+test('external release restores only settings still owned and rejects expired sessions',()=>{
+ const f=setup();const a=f.w.PokeAutomationAdapters.adapters.navigation;const owner={active:true,isCurrent(){return this.active;},onManual(){}};
+ f.eac.autoClickState(true);a.acquire(owner);a.apply(owner,{target:{kind:'route',number:1,region:0},count:2});
+ f.eac.autoClickState(false);owner.active=false;f.nav.tick(true);
+ assert.equal(f.eac.autoClickState(),false);assert.equal(f.nav.active,false);assert.equal(f.w.PokeAutomationAdapters.movementOwner,null);
+});
+test('clicker exports a load independent adapter and manual control invalidates its token',()=>{
+ const f=setup();const fs=require('node:fs');const source=fs.readFileSync(require('node:path').join(__dirname,'../enhancedautoclicker.user.js'),'utf8');
+ const method=source.match(/static registerAutomationAdapter\(\) \{([\s\S]*?)\n    \}/);
+ assert.ok(method);f.run('EnhancedAutoClicker.registerAutomationAdapter=function(){'+method[1]+'};EnhancedAutoClicker.registerAutomationAdapter()');
+ const a=f.w.PokeAutomationAdapters.adapters.clicker;let canceled=false;const owner={active:true,isCurrent(){return this.active;},onManual(){canceled=true;this.active=false;a.release(this,'manual');}};
+ assert.equal(a.acquire(owner),true);assert.equal(a.apply(owner,{enabled:true}),true);assert.equal(f.eac.autoClickState(),true);
+ f.eac.toggleAutoClick();assert.equal(canceled,true);assert.equal(f.eac.autoClickState(),false);
+});
+test('runner and navigation preserve shared registry in either initialization order and reload OFF',()=>{
+ const fs=require('node:fs'),path=require('node:path');const source=fs.readFileSync(path.join(__dirname,'../autoquestrunner.user.js'),'utf8');
+ const f=setup();const registry=f.w.PokeAutomationAdapters;
+ f.run(source);f.run('AutoQuestRunner.init()');assert.equal(f.w.PokeAutomationAdapters,registry);
+ const r=f.w.AutoQuestRunner;assert.equal(r.start(),true);assert.equal(r.apply('navigation',{target:{kind:'route',number:1,region:0},count:1}),true);r.stop();
+ const g=setup();delete g.w.PokeAutomationAdapters;g.run(source);g.run('AutoQuestRunner.init()');const early=g.w.PokeAutomationAdapters;
+ g.nav.registerAdapter();assert.equal(g.w.PokeAutomationAdapters,early);assert.equal(g.w.AutoQuestRunner.active,false);
+});

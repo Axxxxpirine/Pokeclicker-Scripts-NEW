@@ -67,7 +67,7 @@ These scripts automate actions or change the interface. Individual options can e
 | [Auto Navigation](autonavigation.user.js) | 1.1.1 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
 | [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.6 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
 | [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.1 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
-| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.0.1 | Chisel/Hammer mining and optional sale of unlocked sellable treasures. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautomine.user.js) |
+| [Enhanced Auto Mine](enhancedautomine.user.js) | 3.2.0 | Adaptive mining, smart Chisel/Hammer targeting, full Cell Battery discharge, sale reserves and session rates. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautomine.user.js) |
 | [Simple Auto Farmer](simpleautofarmer.user.js) | 1.9.1 | Planting, harvesting, replanting, mulching, wanderer capture, stop timer and manual mutation plans. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/simpleautofarmer.user.js) |
 | [Auto Battle Frontier](autobattlefrontier.user.js) | 1.5.7 | Repeat Frontier runs using a maximum stage or attack-count limit. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattlefrontier.user.js) |
 | [Auto Battle Items](autobattleitems.user.js) | 1.1.5 | Use selected battle items automatically and optionally buy them at base price. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autobattleitems.user.js) |
@@ -99,7 +99,7 @@ These scripts can change normal game rules or directly change saved progression.
 
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
-| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.3 | Reset known script preferences after confirmation, preserving saves and unrelated data. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
+| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.5 | Reset known script preferences after confirmation, preserving saves and unrelated data. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
 
 ## Feature guide
 
@@ -191,9 +191,17 @@ The **stop timer** accepts 1–10080 whole minutes. Starting it does not enable 
 
 ### Enhanced Auto Mine
 
-Open the Underground and turn **Auto Mine ON**. It takes at most one action per second using Chisel or Hammer as durability permits. Enable the game's **Auto Restart** to continue to the next mine.
+Open the Underground and turn **Auto Mine ON**. It attempts at most one tool action every 50 ms (up to 20/s), through the game's native click limit. When both tools are exhausted, it waits according to their recovery rates, checking at least once per second for changes or a full battery. Searches and other idle states are checked once per second. There are no catch-up bursts after suspension. Enable the game's **Auto Restart** to continue to the next mine. The script warns when it is OFF but does not change that setting.
 
-**Auto Sell Treasure** sells the current stock of sellable, unlocked underground items after a layer is completed. Lock items you want to keep. Bombs are avoided. Old energy restores, survey/skip controls and the separate plate-selling mode are no longer part of this script.
+The planner compares usable Chisel and Hammer actions by useful treasure layers removed, progress toward recovering each treasure and durability cost. It can center a Hammer hit on an empty tile to reach surrounding treasure cells and favors nearly uncovered treasures. Free tools optimize useful work per click. As in previous versions, it reads the game's buried reward positions. This is a greedy heuristic, not a guaranteed optimal route. Bombs are never used, and the manually selected tool is restored after each click.
+
+**Auto Battery** starts ON and remembers your choice. While **Auto Mine** is ON, it uses the Cell Battery at 100% through the game's native discharge action, before using tools. It waits for an accessible, discovered mine with treasures remaining, then pauses tools until the discharge animation ends. Turning **Auto Mine OFF** also stops automatic battery use. Manual discharges are allowed to finish before automatic tools resume, even with **Auto Battery OFF**.
+
+**Auto Sell Treasure** sells only surplus sellable, unlocked items after a layer is completed while Auto Mine is running. Open **Sale reserves** to set a default reserve and optional per-item reserves (whole numbers from 0 to 1,000,000,000). A blank item reserve inherits the default, while an explicit zero overrides it. The default is zero to preserve existing behavior. Locked items are always kept. Reserves persist across reloads. Invalid saved reserves or an unfinished/invalid edit pause selling while mining continues. Complete a valid edit to resume. Layers completed while Auto Mine is OFF do not trigger a sale on restart.
+
+The status line explains access restrictions, discovery, battery animation, tool recovery, missing targets and completed mines. **Session** shows treasure-found and completed-layer totals and their average rates per minute since Auto Mine was started. These are game-wide Underground counters, including manual actions and helpers (even rewards retained by helpers or destroyed by manual bombs), not a script-only inventory/profit measure. Stopping freezes the session display, starting again resets it, and reloads start a new session. Unexpected runtime errors stop automation and show an error state.
+
+Old energy restores, survey/skip controls and the separate plate-selling mode are no longer part of this script.
 
 ### Catch Filter Fantasia and Auto Quest Completer
 

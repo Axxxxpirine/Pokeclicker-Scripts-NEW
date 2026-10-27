@@ -21,7 +21,7 @@ function setup(storage = {}) {
     const h = load('enhancedautomine.user.js', '<div id="mineModal"><div class="modal-body"><div id="mineBody"></div></div></div><div id="treasures"></div>', {
         App: { isUsingClient: true, game: { underground, statistics: { undergroundLayersMined: stats, undergroundItemsFound: found } } },
         Settings: { getSetting: () => ({ observableValue: autoRestart }) },
-        UndergroundToolType: { Chisel: 0, Hammer: 1, Bomb: 2 },
+        UndergroundToolType: { Chisel: 0, Hammer: 1, Bomb: 2, Survey: 3 },
         UndergroundItems: { list: [item] }, player: { itemList: { Hard_stone: () => 3 } },
         UndergroundController: { clickModalMineSquare: index => clicks.push([index, tools.selectedToolType]), sellMineItem: (it, n) => sales.push([it.itemName, n]) },
     }, storage);
@@ -207,6 +207,108 @@ function grid(h, width, cells) {
     h.mine.grid = cells.map(([depth, id]) => ({ layerDepth: depth,
         reward: id === undefined ? undefined : { rewardID: id, rewarded: false } }));
 }
+
+function extraTools(h, bonus = 0) {
+    for (const [id, cost] of [[2, 0.18], [3, 1]]) {
+        h.toolList.push({ id, durability: 1, durabilityPerUse: cost,
+            restoreRatePerSecond: () => 0.001,
+            canUseTool() { return this.durability >= this.durabilityPerUse; } });
+    }
+    h.w.OakItemType = { Explosive_Charge: 7 };
+    h.w.App.game.oakItems = { isActive: () => bonus > 0, calculateBonus: () => bonus };
+}
+
+test('Survey finds hidden treasure even while excavation tools are recovering, then respects its active hint', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.toolList[0].durability = h.toolList[1].durability = 0;
+    h.w.doAutoMine();
+    assert.deepEqual(h.clicks, [[0, 3]]);
+    assert.equal(h.tools.selectedToolType, 2);
+    h.mine.grid[0].survey = 5;
+    h.mine.grid[0].surveyRewardID = 0;
+    h.toolList[0].durability = 1;
+    h.w.doAutoMine();
+    assert.deepEqual(h.clicks.at(-1), [0, 0]);
+});
+
+test('Survey skips partially visible treasures and can survey a new mine', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    grid(h, 2, [[0, 0], [2, 0]]);
+    h.w.doAutoMine();
+    assert.deepEqual(h.clicks, [[1, 0]]);
+    grid(h, 2, [[3, 1], [3, 1]]);
+    h.underground.mine = { ...h.mine };
+    h.w.doAutoMine();
+    assert.equal(h.clicks.at(-1)[1], 3);
+});
+
+test('Bomb uses its independent durability when no treasure can be completed by its ten random hits', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.toolList[0].durability = h.toolList[1].durability = h.toolList[3].durability = 0;
+    // Six depth-3 tiles require twelve hits, including repeated hits on a tile.
+    grid(h, 6, Array.from({ length: 6 }, () => [3, 0]));
+    h.w.doAutoMine();
+    assert.deepEqual(h.clicks, [[0, 2]]);
+});
+
+test('Bomb protection checks every treasure, repeated hits and the Explosive Charge bonus', () => {
+    for (const [cells, bonus] of [
+        [Array.from({ length: 5 }, () => [3, 0]), 0],
+        [[[3, 0], [3, 0], [3, 0], [3, 0], [3, 0], [3, 0], [1, 1]], 0],
+        [Array.from({ length: 6 }, () => [3, 0]), 2],
+    ]) {
+        const h = setup({ autoMineState: true });
+        extraTools(h, bonus);
+        h.toolList[3].durability = 0;
+        grid(h, cells.length, cells);
+        h.w.doAutoMine();
+        assert.ok(h.clicks.length === 1);
+        assert.notEqual(h.clicks[0][1], 2);
+        h.dom.window.close();
+    }
+});
+
+test('Bomb safety is recomputed after excavation and unavailable bonus information fails closed', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.toolList[3].durability = 0;
+    grid(h, 6, Array.from({ length: 6 }, () => [3, 0]));
+    h.w.doAutoMine();
+    assert.equal(h.clicks.at(-1)[1], 2);
+    h.mine.grid[0].layerDepth = 0;
+    h.w.doAutoMine();
+    assert.notEqual(h.clicks.at(-1)[1], 2);
+    h.mine.grid[0].layerDepth = 3;
+    delete h.w.App.game.oakItems;
+    h.w.doAutoMine();
+    assert.notEqual(h.clicks.at(-1)[1], 2);
+});
+
+test('special tools obey battery animation, Auto Mine OFF and mine lifecycle gates', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.battery.activeDischargeID = 'Eruption'; h.w.doAutoMine();
+    h.battery.activeDischargeID = null;
+    h.underground.canAccess = () => false; h.w.doAutoMine();
+    h.underground.canAccess = () => true;
+    h.mine.timeUntilDiscovery = 1; h.w.doAutoMine();
+    h.mine.timeUntilDiscovery = 0;
+    h.mine.completed = true; h.w.doAutoMine();
+    h.mine.completed = false;
+    h.w.mineState = false; h.w.doAutoMine();
+    assert.deepEqual(h.clicks, []);
+});
+
+test('recovering Survey wakes the timer before the exhausted excavation tools', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.toolList.forEach(tool => { tool.durability = 0; });
+    h.toolList[3].durability = 0.9995;
+    assert.equal(h.w.doAutoMine(), 500);
+});
 
 test('adaptive timer runs charged tools at 20 attempts per second and backs off for recovery', () => {
     const h = setup({ autoMineState: true });
@@ -444,4 +546,34 @@ test('finishing an edit at its original value resumes selling even without a cha
     input.dispatchEvent(new h.w.Event('blur'));
     h.stats(11); h.tick();
     assert.deepEqual(h.sales, [['Hard_stone', 3]]);
+});
+
+test('quest-owned mining bypasses even a safe charged Bomb and standalone Bomb behavior resumes after release', () => {
+    const h = setup({ autoMineState: true });
+    extraTools(h);
+    h.toolList[3].durability = 0;
+    grid(h, 6, Array.from({ length: 6 }, () => [3, 0]));
+    h.w.doAutoMine();
+    assert.equal(h.clicks.at(-1)[1], 2, 'standalone uses the safe Bomb');
+
+    h.w.registerQuestMineAdapter();
+    const adapter = h.w.PokeAutomationAdapters.adapters.mine;
+    const owner = { active: true, isCurrent() { return this.active; } };
+    assert.equal(adapter.acquire(owner), true);
+    h.clicks.length = 0;
+    adapter.apply(owner, {});
+    assert.equal(h.clicks.length, 1);
+    assert.ok([0, 1].includes(h.clicks[0][1]), 'owned action excavates with Chisel or Hammer');
+    assert.equal(h.tools.selectedToolType, 2, 'manual tool selection is restored');
+
+    h.clicks.length = 0;
+    h.toolList[0].durability = h.toolList[1].durability = 0;
+    adapter.apply(owner, {});
+    assert.deepEqual(h.clicks, [], 'owned mining waits despite a charged safe Bomb');
+    assert.match(adapter.inspect().reason, /recovering/);
+
+    owner.active = false;
+    adapter.release(owner);
+    h.w.doAutoMine();
+    assert.deepEqual(h.clicks, [[0, 2]], 'standalone special tools are preserved after release');
 });

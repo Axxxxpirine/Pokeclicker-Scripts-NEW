@@ -15,7 +15,7 @@ function owner(adapter) {
   assert.equal(adapter.acquire(token), true);
   return token;
 }
-function farm() {
+function farm(storage = {}) {
   const actions = [],
     plots = Array.from({ length: 5 }, () => ({
       berry: -1,
@@ -51,7 +51,7 @@ function farm() {
         BERRIES_PER_PAGE: 8,
       },
     },
-    { autoFarmMutationPlan: [-1, -1, -1, 0, -1] },
+    { autoFarmMutationPlan: [-1, -1, -1, 0, -1], ...storage },
   );
   h.w.initAutoFarm();
   return {
@@ -230,10 +230,10 @@ test("mine owns timed native searches and restarts completed layers while respec
   h.adapter.apply(t, {});
   assert.equal(h.actions.length, 1);
   h.underground.mine.timeUntilDiscovery = 0;
-  h.adapter.apply(t, {});
+  h.tick();
   assert.match(h.adapter.inspect().reason, /recover/i);
   h.underground.mine.completed = true;
-  h.adapter.apply(t, {});
+  h.tick();
   assert.deepEqual(h.actions, [4, 4]);
   assert.equal(h.w.localStorage.getItem("autoMineState"), "false");
   h.w.startAutoMine();
@@ -601,3 +601,60 @@ test("mine search availability is checked fresh before and after native search s
     false,
   );
 });
+
+// Catches stock being treated as usable despite every usable planting place being unavailable.
+for (const state of ["protected", "committed", "locked", "irrelevant"]) {
+  test(`farm ${state} plots with stock permit free fallback without uprooting`, () => {
+    const h = farm(state === "committed" ? {autoFarmMutationPlan:[0,0,0,0,0]} : {});
+    for (const p of h.plots) {
+      if (state === "protected") p.isSafeLocked = true;
+      if (state === "locked") p.isUnlocked = false;
+      if (state === "irrelevant") p.berry = 1;
+    }
+    const r = attachRunner(h, "HarvestBerriesQuest", {berryType:0});
+    const t = owner(h.adapter);
+    assert.equal(r.evaluateRefresh(r.readQuestSnapshot(), {refreshCost:0,now:1000000}).refresh, true);
+    h.adapter.apply(t,{berryType:0});
+    assert.equal(h.adapter.inspect().status, "blocked");
+    assert.deepEqual(h.actions, []);
+    if (state === "irrelevant") {
+      h.plots[0].berry = 0;
+      h.plots[0].stage = () => 0;
+      assert.equal(r.evaluateRefresh(r.readQuestSnapshot(), {refreshCost:0,now:1000000}).refresh, false);
+      h.adapter.apply(t,{berryType:0});
+      assert.equal(h.adapter.inspect().status, "waiting");
+      assert.deepEqual(h.actions, []);
+    }
+  });
+}
+
+// Catches counting noncombat species toward the active subregion's reserve.
+test("hatchery preserves the sole Magikarp Jump combatant while allowing typed noncombat breeding", () => {
+  const h = hatch(), t = owner(h.adapter);
+  h.queue.length = 0;
+  h.party.forEach((p,i) => {p.id = [129,1,4][i];p.attack = [10,100,100][i];});
+  h.w.player = {region:6,subregion:1};
+  h.w.App.game.party.partyPokemonActiveInSubRegion = (region,subregion) => {
+    assert.equal(region,6); assert.equal(subregion,1);
+    return h.party.filter(p => Math.floor(p.id) === 129);
+  };
+  h.w.PokemonHelper.getPokemonById = id => ({type1:id===129 ? 1 : 0,type2:-1});
+  h.adapter.apply(t,{type:1});
+  assert.deepEqual(h.added, []);
+  h.adapter.apply(t,{type:0});
+  assert.deepEqual(h.added,[1,4]);
+  assert.equal(h.party[0].breeding,false);
+});
+
+// Catches unnecessary full-party attack calculation while no new breeder can be added.
+for (const state of ["full", "queued"]) {
+  test(`hatchery ${state} capacity exits before native attack scan`, () => {
+    const h = hatch(), t = owner(h.adapter);
+    let scans=0;
+    h.w.App.game.party.calculateOnePokemonAttack = () => {scans++;return 1;};
+    if (state === "full") {h.queue.length=0;h.breeding.hasFreeEggSlot=()=>false;}
+    h.adapter.apply(t,{});
+    assert.equal(scans,0);
+    assert.deepEqual(h.added,[]);
+  });
+}

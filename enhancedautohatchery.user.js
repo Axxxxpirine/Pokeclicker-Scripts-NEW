@@ -42,7 +42,62 @@ var numMonsWithPkrsCached;
 var autoHatcheryCachedList = [];
 var hatchesSinceFilteredHatchery = 0;
 
+// Ephemeral breeding intent never changes filters, priorities or item settings.
+var questHatchOwner = null, questHatchObjective = null, questHatchPrevious, questHatchApplied=false;
+var questHatchStatus = {status:'ready',progress:0,nextWake:0};
+function registerQuestHatcheryAdapter() {
+    const w=!App.isUsingClient ? unsafeWindow : window;
+    const registry=w.PokeAutomationAdapters ||= {version:1,adapters:Object.create(null),movementOwner:null};
+    registry.adapters.hatchery={
+        inspect:()=>({...questHatchStatus,activities:[{id:'hatchery',target:{kind:'hatchery'},unlocked:App.game.breeding.canAccess(),
+            capabilities:['hatch','capture','shiny'],rates:{}} , ...[...new Set(App.game.party.caughtPokemon.flatMap(p=>{
+                const data=typeof PokemonHelper === 'undefined' ? null : PokemonHelper.getPokemonById(p.id);
+                return data ? [data.type1,data.type2].filter(t=>t>=0):[];
+            }))].map(type=>({id:`hatchery:${type}`,target:{kind:'hatchery'},types:[type],type,
+                unlocked:App.game.breeding.canAccess(),capabilities:['captureType'],rates:{}}))]}),
+        acquire(owner) {if (questHatchOwner && questHatchOwner !== owner) return false;
+            questHatchOwner=owner;questHatchPrevious=hatchState;questHatchApplied=false;return true;},
+        apply(owner,objective) {if (owner !== questHatchOwner || !owner?.active || !owner.isCurrent()) return false;
+            if (questHatchApplied && hatchState !== true) {owner.onManual('Manual hatchery state');return false;}
+            questHatchObjective=objective;hatchState=true;questHatchApplied=true;questHatchTick();return true;},
+        release(owner) {if (owner !== questHatchOwner) return;
+            if (questHatchApplied && hatchState === true) hatchState=questHatchPrevious;
+            questHatchOwner=null;questHatchObjective=null;questHatchStatus={status:'ready',progress:0,nextWake:0};}
+    };
+}
+function questHatchTick() {
+    const breeding=App.game.breeding;
+    if (!breeding.canAccess()) {questHatchStatus={status:'blocked',reason:'Hatchery locked',nextWake:Date.now()+1000};return;}
+    for (let i=0;i<breeding.eggSlots;i++) {
+        const egg=breeding.eggList[i]?.();
+        if (egg && !egg.isNone() && egg.canHatch()) breeding.hatchPokemonEgg(i);
+    }
+    const party=App.game.party.caughtPokemon;
+    const fighting=party.filter(p=>!p.breeding);
+    // Preserve at least half the current party (minimum one) for the primary battle.
+    const reserve=Math.max(1,Math.ceil(party.length/2));
+    const attack=p=>Math.max(0,Number(App.game.party.calculateOnePokemonAttack?.(p,undefined,undefined,undefined,undefined,true) ?? p.attack ?? 1) || 0);
+    const totalAttack=party.reduce((sum,p)=>sum+attack(p),0);
+    let removedAttack=totalAttack-fighting.reduce((sum,p)=>sum+attack(p),0), added=0;
+    if (!breeding.queueList?.().length && breeding.hasFreeEggSlot()) {
+        for (const p of [...fighting].sort((a,b)=>attack(a)-attack(b))) {
+            if (!breeding.hasFreeEggSlot() || fighting.length-added <= reserve) break;
+            if (p.level < 100 || p.breeding || (p.isHatchable && !p.isHatchable())) continue;
+            if (questHatchObjective?.type != null) {
+                const data=PokemonHelper.getPokemonById(p.id);
+                if (![data?.type1,data?.type2].includes(questHatchObjective.type)) continue;
+            }
+            const contribution=attack(p);
+            if (removedAttack+contribution > totalAttack/2) continue;
+            if (breeding.addPokemonToHatchery(p)) {added++;removedAttack+=contribution;}
+        }
+    }
+    questHatchStatus={status:'waiting',reason:breeding.queueList?.().length ? 'Waiting for native hatchery queue':'Waiting for battle egg steps or eligible level 100 breeders',
+        progress:added,nextWake:Date.now()+1000};
+}
+
 function initAutoHatch() {
+    registerQuestHatcheryAdapter();
     const breedingDisplay = document.getElementById('breedingDisplay');
     const breedingModal = document.getElementById('breedingModal');
 
@@ -98,6 +153,9 @@ function initAutoHatch() {
     loadPriorityIds();
     renderPriorityIds();
     initHatcheryQueueOptions(autoHatchControls);
+    for (const element of autoHatchControls.querySelectorAll('button,input,select')) {
+        for (const event of ['click','change']) element.addEventListener(event,()=>questHatchOwner?.onManual('Manual hatchery settings'),true);
+    }
 
     addGlobalStyle('.eggSlot.disabled { pointer-events: unset !important; }');
 
@@ -117,7 +175,9 @@ function initAutoHatch() {
 
 function toggleAutoHatch(event) {
     const element = event.target;
-    hatchState = !hatchState;
+    const requested = !hatchState;
+    questHatchOwner?.onManual('Manual hatchery control');
+    hatchState = requested;
     if (hatchState) {
         autoHatcher();
     }
@@ -127,6 +187,7 @@ function toggleAutoHatch(event) {
 }
 
 function toggleEgg(event) {
+    questHatchOwner?.onManual('Manual hatchery settings');
     const element = event.target;
     eggState = !eggState;
     element.classList.replace(...(eggState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -135,6 +196,7 @@ function toggleEgg(event) {
 }
 
 function toggleFossil(event) {
+    questHatchOwner?.onManual('Manual hatchery settings');
     const element = event.target;
     fossilState = !fossilState;
     element.classList.replace(...(fossilState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -143,6 +205,7 @@ function toggleFossil(event) {
 }
 
 function toggleShinyFossil(event) {
+    questHatchOwner?.onManual('Manual hatchery settings');
     const element = event.target;
     shinyFossilState = !shinyFossilState;
     element.classList.replace(...(shinyFossilState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -151,6 +214,7 @@ function toggleShinyFossil(event) {
 }
 
 function togglePKRS(event) {
+    questHatchOwner?.onManual('Manual hatchery settings');
     const element = event.target;
     pkrsState = !pkrsState;
     element.classList.replace(...(pkrsState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -159,6 +223,7 @@ function togglePKRS(event) {
 }
 
 function toggleFilterOnly(event) {
+    questHatchOwner?.onManual('Manual hatchery settings');
     filterOnlyState = !filterOnlyState;
     const button = event.currentTarget;
     button.classList.replace(...(filterOnlyState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -234,6 +299,10 @@ function bindAutoHatcher() {
 }
 
 function autoHatcher() {
+    if (questHatchOwner) {
+        if (questHatchOwner.active && questHatchOwner.isCurrent()) questHatchTick();
+        return;
+    }
     if (!App.game.breeding.canAccess()) {
         return;
     }

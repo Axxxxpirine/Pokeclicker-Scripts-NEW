@@ -150,8 +150,8 @@ function initAutoQuest() {
     }
 
     function toggleAutoQuest() {
-        manualQuestControl();
         autoQuestEnabled = !autoQuestEnabled;
+        manualQuestControl();
         if (autoQuestEnabled) {
             refreshSpent = 0;
             refreshQuestSubscriptions();
@@ -168,18 +168,18 @@ function initAutoQuest() {
     }
 
     function changeMaxQuests(event) {
-        manualQuestControl();
         const newVal = +event.target.value;
         if (Number.isInteger(newVal) && 0 < newVal && newVal <= 10) {
             maxQuests = newVal;
+            manualQuestControl();
             localStorage.setItem('autoQuestMaxQuests', maxQuests);
             beginQuests();
         }
     }
 
     function toggleQuestResetState() {
-        manualQuestControl();
         questResetState = !questResetState;
+        manualQuestControl();
         resetQuestResetTimeout();
         const questResetBtn = document.getElementById('toggle-auto-quest-reset');
         questResetBtn.classList.replace(...(questResetState ? ['btn-danger', 'btn-success'] : ['btn-success', 'btn-danger']));
@@ -188,13 +188,13 @@ function initAutoQuest() {
     }
 
     function changeQuestResetTimer() {
-        manualQuestControl();
         const form = document.getElementById('input-autoQuestResetTimer');
         let val = +form.value;
         val = (Number.isInteger(val) && val > 0 ? val : 10);
         form.value = val;
         if (val != questResetTimer) {
             questResetTimer = val;
+            manualQuestControl();
             resetQuestResetTimeout();
             document.getElementById('toggle-auto-quest-reset').textContent = `${questResetTimer} minute Reset Timer [${questResetState ? 'ON' : 'OFF'}]`;
             localStorage.setItem('autoQuestResetTimer', questResetTimer);
@@ -202,13 +202,13 @@ function initAutoQuest() {
     }
 
     function toggleIgnoreQuestType(type) {
-        manualQuestControl();
         let i = ignoredQuestTypes.indexOf(type);
         if (i >= 0) {
             ignoredQuestTypes.splice(i, 1);
         } else {
             ignoredQuestTypes.push(type);
         }
+        manualQuestControl();
         localStorage.setItem('autoQuestIgnoredQuestTypes', JSON.stringify(ignoredQuestTypes));
     }
 

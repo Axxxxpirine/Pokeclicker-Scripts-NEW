@@ -164,7 +164,8 @@ class AutoQuestRunner {
             const seconds = Math.max(...contributions.map(c => c.quest.remaining/c.rate)) + Math.max(0,activity.setupSeconds || 0) + recoverySeconds;
             const reward = contributions.reduce((sum,c) => sum+c.quest.reward,0);
             return {...activity,questIds:contributions.map(c => c.quest.id),contributions:contributions.map(c => ({id:c.quest.id,rate:c.rate})),
-                prerequisites,entryPrerequisites,totalRequirements,exploratory:!estimated && !prerequisites.length,seconds:estimated && Number.isFinite(seconds) ? seconds : null,
+                prerequisites,entryPrerequisites,totalRequirements,exploratory:!estimated &&
+                    (!prerequisites.length || (activity.target.kind === 'dungeon' && !entryPrerequisites.length)),seconds:estimated && Number.isFinite(seconds) ? seconds : null,
                 score:estimated && seconds > 0 && Number.isFinite(seconds) ? reward/seconds : 0,
                 reason:estimated ? null : prerequisites.length ? 'Resource recovery estimate unavailable' : 'Progress estimate unavailable, observe useful attempts'};
         }).filter(Boolean);

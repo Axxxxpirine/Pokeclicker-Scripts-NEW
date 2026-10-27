@@ -5,7 +5,7 @@
 // @description   Adaptive mining with smart tool targeting, full Cell Battery discharge, sale reserves and session rates. Compatible with Pokéclicker 0.10.26.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.2.3
+// @version       3.2.4
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues

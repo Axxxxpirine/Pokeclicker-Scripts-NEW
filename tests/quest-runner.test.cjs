@@ -77,3 +77,9 @@ test('native destination unlock bosses guides and departure gate activities',()=
 test('dungeon total recovery prices actual tokenCost for remaining clears separately from entry',()=>{
  const f=setup(),r=f.w.AutoQuestRunner;nativeLocations(f);f.w.App.game.quests={questList:()=>[quest('DefeatDungeonQuest',{dungeon:'Shared Town',amount:3,initial:()=>0,focus:()=>0})]};let s=r.readQuestSnapshot({rates:{'dungeon:Shared Town':{dungeon:1},dungeonToken:10}});s.resources.dungeonToken=30;const c=r.buildCandidates(s)[0];assert.equal(c.requirements[0].amount,30);assert.equal(c.entryPrerequisites.length,0);assert.equal(c.prerequisites[0].amount,90);assert.equal(c.prerequisites[0].missing,60);assert.equal(c.seconds,9);
 });
+test('dungeon bootstrap can observe one funded entry without estimating future token recovery',()=>{
+ const f=setup(),r=f.w.AutoQuestRunner;nativeLocations(f);f.w.App.game.quests={questList:()=>[quest('DefeatDungeonQuest',{dungeon:'Shared Town',amount:3,initial:()=>0,focus:()=>0})]};
+ let s=r.readQuestSnapshot();s.resources.dungeonToken=30;let c=r.buildCandidates(s),p=r.selectPlan(s,c);assert.equal(p.primary.id,'dungeon:Shared Town');assert.equal(p.primary.seconds,null);assert.equal(p.primary.prerequisites[0].missing,60);assert.equal(p.primary.entryPrerequisites.length,0);
+ s.resources.dungeonToken=29;p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary,null);
+ f.w.DungeonGuides.hired=()=>true;s=r.readQuestSnapshot();s.resources.dungeonToken=30;p=r.selectPlan(s,r.buildCandidates(s));assert.equal(p.primary,null);
+});

@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name          [Pokeclicker] Auto Quest Runner
 // @namespace     Pokeclicker Scripts
-// @author        Axxxxpirine (Ideas: goldhaxx #431, Bowbylone/Dionisos94 #240, Sorrow #134)
-// @description   Session-only quest automation controls with shared adapters and manual interruption.
+// @author        Joey / Codex (automation adapter integration)
+// @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.1
+// @version       1.1.2
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -174,7 +174,14 @@ class AutoQuestRunner {
             }
             const seconds = Math.max(...contributions.map(c => c.quest.remaining/c.rate)) + Math.max(0,activity.setupSeconds || 0) + recoverySeconds;
             const reward = contributions.reduce((sum,c) => sum+c.quest.reward,0);
-            return {...activity,questIds:contributions.map(c => c.quest.id),contributions:contributions.map(c => ({id:c.quest.id,rate:c.rate})),
+            const sources = contributions.map(c => {
+                if (!(c.rate > 0)) return 'unknown';
+                const metric = this.questMetrics[c.quest.type];
+                const key = `${metric}:${JSON.stringify(c.quest.target)}`;
+                return activity.rateSources?.[key] || activity.rateSources?.[metric] || activity.estimateSource || (c.rate > 0 ? 'observed' : 'unknown');
+            });
+            const estimateSource = [...new Set(sources)].join(' + ');
+            return {...activity,estimateSource,questIds:contributions.map(c => c.quest.id),contributions:contributions.map(c => ({id:c.quest.id,rate:c.rate})),
                 prerequisites,entryPrerequisites,totalRequirements,exploratory:!estimated &&
                     (!prerequisites.length || (activity.target.kind === 'dungeon' && !entryPrerequisites.length)),seconds:estimated && Number.isFinite(seconds) ? seconds : null,
                 score:estimated && seconds > 0 && Number.isFinite(seconds) ? reward/seconds : 0,
@@ -266,7 +273,9 @@ class AutoQuestRunner {
             if (q.type === 'UseOakItemQuest' && oakItems.includes(q.target.item) && typeof OakItemType !== 'undefined')
                 rates[key] = q.target.item === OakItemType.Magic_Ball ? priors.capture : priors.defeat;
         }
-        return {...activity,pokeball:ball,oakItems,rates,estimateSource:Object.keys(activity.rates || {}).length ? 'observed' : Object.keys(priors).length ? 'native prior' : 'unknown',
+        const rateSources = Object.fromEntries(Object.keys(rates).map(key => [key,
+            Object.hasOwn(activity.rates || {},key) ? 'observed' : 'native prior']));
+        return {...activity,pokeball:ball,oakItems,rates,rateSources,estimateSource:Object.keys(activity.rates || {}).length ? 'observed' : Object.keys(priors).length ? 'native prior' : 'unknown',
             capabilities:[...(activity.capabilities || []),'ball',...(oakItems.length ? ['oak'] : [])]};
     }
     static acceptanceOrder(snapshot) {
@@ -437,16 +446,36 @@ class AutoQuestRunner {
         w.AutoQuestRunner = this;
         this.registry();
         if (document.getElementById('auto-quest-runner')) return;
+        const panel = document.createElement('section');
+        panel.id = 'auto-quest-runner-panel';
+        panel.className = 'p-2 border-top';
+        panel.style.cssText = 'clear:both;text-align:left;font-size:12px;line-height:1.4;';
         const button = document.createElement('button');
-        button.id = 'auto-quest-runner'; button.className = 'btn btn-secondary'; button.textContent = 'Auto Quests: OFF';
+        button.id = 'auto-quest-runner'; button.type = 'button';
+        button.className = 'btn btn-sm btn-secondary btn-block';
+        button.setAttribute('aria-controls','auto-quest-runner-status');
         button.addEventListener('click', () => this.active ? this.stop('Stopped') : this.start());
-        document.querySelector('.battle-view')?.before(button);
+        const status = document.createElement('div');
+        status.id = 'auto-quest-runner-status';
+        status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+        status.setAttribute('aria-atomic','true'); status.style.marginTop = '6px';
+        panel.append(button,status);
+        const questPanel = document.getElementById('questDisplayContainer');
+        if (questPanel) questPanel.append(panel);
+        else document.querySelector('.battle-view')?.before(panel);
+        this.render();
     }
     static start(names = ['navigation']) {
         if (this.active) return false;
         const registry = this.registry();
-        if (registry.version !== 1 || names.some(name => !registry.adapters[name])) return false;
-        this.active = true;
+        if (registry.version !== 1 || names.some(name => !registry.adapters[name])) {
+            const missing = names.filter(name => !registry.adapters[name]);
+            this.reason = missing.includes('navigation') ? 'Enable Auto Navigation to start Auto Quests'
+                : `Enable required modules: ${missing.join(', ') || 'compatible automation adapters'}`;
+            this.render(); return false;
+        }
+        this.active = true; this.reason = null;
+        this.sessionStarted = Date.now(); this.sessionQP = 0; this.lastQP = this.questPoints();
         const owner = {active:true, isCurrent:() => owner.active && this.active && this.owner === owner,
             onManual:reason => { if (owner.isCurrent()) this.stop(reason); }};
         this.owner = owner; this.acquired = [];
@@ -481,6 +510,7 @@ class AutoQuestRunner {
     }
     static observeProgress(snapshot) {
         const now = Date.now(), previous = this.observation;
+        this.visibleQuests = snapshot.quests;
         const stats=App.game.statistics;
         const attempts={battles:Number(this.read(stats?.totalPokemonDefeated))||0,hatches:Number(this.read(stats?.totalPokemonHatched))||0};
         if (!this.attemptBaseline || this.attemptEpoch!==snapshot.epoch) {this.attemptBaseline=attempts;this.attemptEpoch=snapshot.epoch;}
@@ -739,9 +769,73 @@ class AutoQuestRunner {
         }
         this.acquired = []; this.reason = reason; this.render();
     }
+    static questPoints() {
+        const currency = typeof GameConstants === 'undefined' ? null : GameConstants.Currency?.questPoint;
+        return currency == null ? 0 : Number(this.read(App.game.wallet?.currencies?.[currency])) || 0;
+    }
     static render() {
         const button = document.getElementById('auto-quest-runner');
-        if (button) button.textContent = `Auto Quests: ${this.active ? 'ON' : 'OFF'}`;
+        if (button) {
+            button.textContent = `Auto Quests: ${this.active ? 'ON' : 'OFF'}`;
+            button.setAttribute('aria-pressed',String(this.active));
+            button.className = `btn btn-sm btn-block btn-${this.active ? 'success' : 'secondary'}`;
+        }
+        const status = document.getElementById('auto-quest-runner-status');
+        if (!status) return;
+        const lines = [];
+        const primary = this.currentPlan?.primary;
+        const target = primary?.target;
+        const action = !this.active ? 'Ready when enabled' : target?.kind === 'route' ? `Route ${target.number} (region ${target.region + 1})`
+            : target ? `${target.kind}: ${target.name || target.gym || ''}` : 'Planning quests';
+        lines.push(`${this.active ? 'Working' : 'OFF'} · ${action}`);
+        const readable = text => text.replace(/^(\d+:\d+):\s*/, (_,id) => {
+            const quest = (this.visibleQuests || []).find(q => q.id === id);
+            return quest ? `${quest.type.replace(/Quest$/,'').replace(/([a-z])([A-Z])/g,'$1 $2')}: ` : '';
+        })
+            .replace(/route:\d+:(\d+)/g, 'Route $1').replace(/farm:points/g,'Farming').replace(/farm:\d+/g,'Berry farming')
+            .replace(/hatchery:/g,'Hatchery:').replace(/mine:/g,'Mining:').replace(/native prior/g,'game mechanics estimate')
+            .replace(/observed/g,'measured progress').replace(/unknown/g,'not yet measured')
+            .replace(/Progress estimate unavailable, observe useful attempts/g,'Learning from quest progress');
+        if (this.reason) {
+            const reason = this.reason.includes(' · ') && this.reason.length > 180 ? 'Waiting for available quest work. See quest limits below.' : readable(this.reason);
+            lines.push(reason.length > 180 ? `${reason.slice(0,177)}…` : reason);
+        }
+        if (this.sessionStarted != null) {
+            const qp = this.questPoints();
+            this.sessionQP += Math.max(0,qp-this.lastQP); this.lastQP = qp;
+            const minutes = (Date.now()-this.sessionStarted)/60000;
+            lines.push(`Session: ${this.sessionQP} QP gained · ${minutes > 0 ? (this.sessionQP/minutes).toFixed(1) : '—'} QP/min observed`);
+            const balls = App.game.pokeballs?.pokeballs || [];
+            lines.push(`Supplies: ${['Poké Ball','Great Ball','Ultra Ball'].map((name,i) => `${name} ${Number(this.read(balls[i]?.quantity)) || 0}`).join(' · ')}`);
+            lines.push(`Supply spend: ${this.spend?.money || 0} money`);
+            const navigationCosts = this.acquired.find(entry => entry.name === 'navigation')?.adapter.inspect?.().costs;
+            if (navigationCosts) lines.push(`Navigation spend: ${navigationCosts.money || 0} money · ${navigationCosts.dungeonToken || 0} dungeon tokens (current navigation session)`);
+        }
+        if (this.active) {
+            for (const {name,adapter} of this.acquired.filter(e => ['farm','hatchery','mine'].includes(e.name))) {
+                const state = adapter.inspect();
+                const label = {farm:'Farming',hatchery:'Hatchery',mine:'Mining'}[name];
+                const unit = {farm:'plots harvested this check',hatchery:'breeders added this check',mine:'layers mined in total'}[name];
+                lines.push(`${label}: ${state.status}${state.reason ? ` · ${state.reason}` : ''}${typeof state.progress === 'number' && state.progress > 0 ? ` · ${state.progress} ${unit}` : ''}`);
+            }
+            if (primary) lines.push(`Completion estimate: ${readable(primary.estimateSource || 'unknown')}`);
+            const attempts = this.attemptProgress;
+            const shinies = (this.visibleQuests || []).filter(q => q.type === 'CatchShiniesQuest');
+            if (shinies.length) lines.push(`Shiny quest progress: ${Math.max(...shinies.map(q => Math.max(0,q.amount-q.remaining)))} successful captures`);
+            if (attempts) lines.push(`This list: ${attempts.battles} battles · ${attempts.hatches} hatches (attempts, not shiny captures). Random rewards have no guaranteed time.`);
+            const selected = [primary,...(this.currentPlan?.background || [])].filter(Boolean);
+            const reasons = [...new Set(this.currentPlan?.reasons || [])].filter(reason =>
+                /^\d+:\d+:/.test(reason) || /module unavailable/.test(reason) || selected.some(activity => reason.startsWith(`${activity.id}:`)))
+                .filter(reason => !/Progress estimate unavailable, observe useful attempts/.test(reason));
+            if (reasons.length) lines.push(`Waiting / limits: ${reasons.slice(0,3).map(readable).join(' · ')}${reasons.length > 3 ? ` · ${reasons.length-3} more quest limits` : ''}`);
+        }
+        // Stable text avoids repeatedly announcing the same status every tick.
+        if (status.dataset.text !== lines.join('\n')) {
+            status.replaceChildren(...lines.map(text => {
+                const line = document.createElement('div'); line.textContent = text; return line;
+            }));
+            status.dataset.text = lines.join('\n');
+        }
     }
 }
 

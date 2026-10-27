@@ -148,3 +148,21 @@ test('free refresh keeps dungeon work with chained money standard-ball and token
  assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,false);
  s.activities[1].requirements=[{resource:'money',amount:10}];assert.equal(r.evaluateRefresh(s,{refreshCost:0}).refresh,false);
 });
+
+test('estimate provenance follows contributing metrics rather than unrelated observations',()=>{
+ const {r,snapshot,activity}=fixture();
+ snapshot.quests[0].type='GainMoneyQuest';
+ activity.rates={capture:1};
+ const candidate=r.buildCandidates(snapshot)[0];
+ assert.equal(candidate.estimateSource,'native prior');
+ activity.rates.money=2;
+ assert.equal(r.buildCandidates(snapshot)[0].estimateSource,'observed');
+});
+
+test('an unmeasured random objective remains unknown despite unrelated observations',()=>{
+ const {r,snapshot,activity}=fixture();
+ snapshot.quests[0].type='CatchShiniesQuest';
+ activity.capabilities.push('shiny');
+ activity.rates={money:2};
+ assert.equal(r.buildCandidates(snapshot)[0].estimateSource,'unknown');
+});

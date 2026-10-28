@@ -5,7 +5,7 @@
 // @description   Adaptive mining with smart tool targeting, full Cell Battery discharge, sale reserves and session rates. Compatible with Pokéclicker 0.10.26.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.2.3
+// @version       3.2.4
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -24,6 +24,7 @@ var mineState = loadMineSetting('autoMineState', false);
 var autoMineBatteryState = loadMineSetting('autoMineBattery', true);
 var sellTreasureState = loadMineSetting('autoSellTreasure', false);
 var autoMineTimer;
+var autoMineTimerGeneration = 0;
 var layersMined;
 var autoMineReservesValid = true;
 var autoMineReserveInputsValid = true;
@@ -39,27 +40,25 @@ function registerQuestMineAdapter() {
         inspect:()=>({...questMineStatus,activities:[{id:'mine',target:{kind:'mine'},unlocked:App.game.underground.canAccess(),
             status:typeof App.game.underground.generateMine === 'function' ? 'ready':'blocked',reason:'Native mine search unavailable',
             capabilities:['layers','items'],rates:{}}]}),
-        acquire(owner) {if (questMineOwner && questMineOwner !== owner) return false;
-            questMineOwner=owner;questMinePrevious=mineState;questMineApplied=false;clearTimeout(autoMineTimer);autoMineTimer=undefined;return true;},
+        acquire(owner) {if (questMineOwner === owner) return true;
+            if (questMineOwner) return false;
+            questMineOwner=owner;questMinePrevious=mineState;questMineApplied=false;
+            clearTimeout(autoMineTimer);autoMineTimer=undefined;autoMineTimerGeneration++;return true;},
         apply(owner) {
             if (owner !== questMineOwner || !owner?.active || !owner.isCurrent()) return false;
             if (questMineApplied && mineState !== true) {owner.onManual('Manual mining state');return false;}
-            mineState=true;questMineApplied=true;
-            const underground=App.game.underground;
-            if (!underground.canAccess()) {questMineStatus={status:'blocked',reason:'Underground locked',nextWake:Date.now()+1000};return true;}
-            // Native generateMine initializes its own discovery timer and rewards.
-            // Never replace an unfinished or currently searching mine.
-            if (!underground.mine || underground.mine.completed || underground.mine.itemsFound >= underground.mine.itemsBuried) {
-                if (underground.battery?.toJSON?.()?.activeDischargeID != null) {autoMineWait('Battery discharging — waiting for animation',100);return true;}
-                if (typeof underground.generateMine !== 'function') {questMineStatus={status:'blocked',reason:'Native mine search unavailable'};return true;}
-                underground.generateMine(underground.autoSearchMineType);
+            // Coordination updates never bypass recovery/search waits or add an extra tool action.
+            if (!questMineApplied) {
+                mineState=true;questMineApplied=true;runAutoMine(autoMineTimerGeneration);
             }
-            doAutoMine();return true;
+            return true;
         },
-        release(owner,reason='') {if (owner !== questMineOwner) return;
+        release(owner) {if (owner !== questMineOwner) return;
             if (questMineApplied && mineState === true) mineState=questMinePrevious;
             questMineOwner=null;questMineStatus={status:'ready',progress:0,nextWake:0};
-            if (!/manual/i.test(reason)) updateAutoMineTimer();}
+            // Settings clicks restore the previous worker too. The main ON/OFF handler
+            // subsequently applies its requested state and replaces this timer once.
+            updateAutoMineTimer();}
     };
 }
 
@@ -106,23 +105,44 @@ function initAutoMine() {
 function updateAutoMineTimer() {
     clearTimeout(autoMineTimer);
     autoMineTimer = undefined;
-    if (mineState) {
-        autoMineTimer = setTimeout(runAutoMine, 50);
-    }
+    const generation = ++autoMineTimerGeneration;
+    if (mineState) autoMineTimer = setTimeout(() => runAutoMine(generation), 50);
 }
 
-function runAutoMine() {
+function runAutoMine(generation = autoMineTimerGeneration) {
+    if (generation !== autoMineTimerGeneration) return;
     autoMineTimer = undefined;
-    if (!mineState || questMineOwner) return;
+    if (!mineState || (questMineOwner && (!questMineOwner.active || !questMineOwner.isCurrent()))) return;
     try {
-        const delay = doAutoMine();
+        const delay = questMineOwner ? doQuestMine() : doAutoMine();
         // One action per callback, no catch-up bursts after a suspended tab.
-        if (mineState) autoMineTimer = setTimeout(runAutoMine, Math.max(50, Math.min(1000, delay)));
+        if (mineState && generation === autoMineTimerGeneration)
+            autoMineTimer = setTimeout(() => runAutoMine(generation), Math.max(50, Math.min(1000, delay)));
     } catch (error) {
         console.error('Auto Mine stopped:', error);
         setAutoMineState(false);
         updateAutoMineDisplay('Stopped after an error. Restart Auto Mine or reload the game.', true);
     }
+}
+
+function doQuestMine() {
+    const underground=App.game.underground;
+    if (!underground.canAccess()) {
+        questMineStatus={status:'blocked',reason:'Underground locked',nextWake:Date.now()+1000};
+        return 1000;
+    }
+    // Native generateMine initializes discovery and rewards. Never replace an
+    // unfinished mine, an active search, or the battery's animation target.
+    if (!underground.mine || underground.mine.completed || underground.mine.itemsFound >= underground.mine.itemsBuried) {
+        if (underground.battery?.toJSON?.()?.activeDischargeID != null)
+            return autoMineWait('Battery discharging — waiting for animation',100);
+        if (typeof underground.generateMine !== 'function') {
+            questMineStatus={status:'blocked',reason:'Native mine search unavailable',nextWake:Date.now()+1000};
+            return 1000;
+        }
+        underground.generateMine(underground.autoSearchMineType);
+    }
+    return doAutoMine();
 }
 
 function startAutoMine() {

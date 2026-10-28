@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.3
+// @version       1.1.4
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -28,6 +28,12 @@ class AutoQuestRunner {
         DefeatDungeonQuest:'dungeon', UsePokeballQuest:'ball', UseOakItemQuest:'oak', HarvestBerriesQuest:'berries',
     });
     static read(value) { return typeof value === 'function' ? value() : value; }
+    // This memo exists only during the synchronous planning part of one tick.
+    static planningValue(key, calculate) {
+        if (!this.planningMemo) return calculate();
+        if (!this.planningMemo.has(key)) this.planningMemo.set(key,calculate());
+        return this.planningMemo.get(key);
+    }
     static readQuestSnapshot(context = {}) {
         const game = App.game, list = this.read(game.quests?.questList) || [];
         if (!this.questObjects || list.length !== this.questObjects.length || list.some((q,i) => q !== this.questObjects[i])) {
@@ -49,15 +55,18 @@ class AutoQuestRunner {
         });
         const value = v => Number(this.read(v)) || 0;
         const currencies = game.wallet?.currencies || [];
-        const resources = {money:value(currencies[0]),dungeonToken:value(currencies[1]),
+        const currency = typeof GameConstants === 'undefined' ? {} : GameConstants.Currency || {};
+        const resources = {money:value(currencies[currency.money]),dungeonToken:value(currencies[currency.dungeonToken]),
             balls:(game.pokeballs?.pokeballs || []).map(b => value(b.quantity))};
         const activities = this.readActivities(context);
         return {epoch:this.questEpoch,quests,resources,activities,rates:context.rates || {},
-            power:{attack:value(game.party?.pokemonAttackObservable),click:value(game.party?.calculateClickAttack?.bind(game.party))},
+            power:{attack:value(game.party?.pokemonAttackObservable),click:this.planningValue('clickAttack',()=>value(game.party?.calculateClickAttack?.bind(game.party)))},
             commitments:context.commitments || {},previous:context.previous || null};
     }
     static readActivities(context) {
         if (context.activities) return context.activities;
+        const cached=this.planningMemo?.get('activities');
+        if (cached) return cached.map(a=>({...a,rates:context.rates?.[a.id] || (a.target.kind==='route' ? {} : a.rates)}));
         const activities = [];
         if (typeof Routes !== 'undefined') for (const route of Routes.regionRoutes) {
             const names = typeof RouteHelper === 'undefined' ? [] : RouteHelper.getAvailablePokemonList(route.number,route.region);
@@ -105,6 +114,7 @@ class AutoQuestRunner {
                 activities.push({id:name,target:{kind:name},module:name,unlocked:false,reason:`${name} module unavailable`,capabilities,rates:context.rates?.[name] || {}});
             }
         }
+        this.planningMemo?.set('activities',activities);
         return activities;
     }
     static shadowEncounters(dungeon) {
@@ -174,7 +184,9 @@ class AutoQuestRunner {
                 if (!(recoveryRate > 0) || !Number.isFinite(recoveryRate) || requirement.resource === 'commitment') estimated = false;
                 else recoverySeconds += requirement.missing / recoveryRate;
             }
-            const seconds = Math.max(...contributions.map(c => c.quest.remaining/c.rate)) + Math.max(0,activity.setupSeconds || 0) + recoverySeconds;
+            const supply=this.supplyEstimate(snapshot,activity,contributions.map(c=>c.quest));
+            if (supply.seconds===null) estimated=false;
+            const seconds = Math.max(...contributions.map(c => c.quest.remaining/c.rate)) + Math.max(0,activity.setupSeconds || 0) + recoverySeconds + (supply.seconds || 0);
             const reward = contributions.reduce((sum,c) => sum+c.quest.reward,0);
             const sources = contributions.map(c => {
                 if (!(c.rate > 0)) return 'unknown';
@@ -187,7 +199,7 @@ class AutoQuestRunner {
                 prerequisites,entryPrerequisites,totalRequirements,exploratory:!estimated &&
                     (!prerequisites.length || (activity.target.kind === 'dungeon' && !entryPrerequisites.length)),seconds:estimated && Number.isFinite(seconds) ? seconds : null,
                 score:estimated && seconds > 0 && Number.isFinite(seconds) ? reward/seconds : 0,
-                reason:estimated ? null : prerequisites.length ? 'Resource recovery estimate unavailable' : 'Progress estimate unavailable, observe useful attempts'};
+                reason:estimated ? null : supply.reason || (prerequisites.length ? 'Resource recovery estimate unavailable' : 'Progress estimate unavailable, observe useful attempts')};
         }).filter(Boolean);
     }
     static selectPlan(snapshot, candidates) {
@@ -217,9 +229,14 @@ class AutoQuestRunner {
         if (activity.target.kind !== 'route' || typeof PokemonFactory === 'undefined') return {};
         const {number,region} = activity.target, party = App.game.party;
         const encounters = activity.encounters || [];
-        const attacks = encounters.map(p => Number(party?.calculatePokemonAttack?.(p.type1 ?? p.type?.[0],p.type2 ?? p.type?.[1])) || 0);
+        const rateKey=`native:${region}:${number}:${ball}`;
+        if (this.planningMemo?.has(rateKey)) return this.planningMemo.get(rateKey);
+        const attacks = encounters.map(p => {
+            const first=p.type1 ?? p.type?.[0],second=p.type2 ?? p.type?.[1];
+            return this.planningValue(`attack:${first}:${second}`,()=>Number(party?.calculatePokemonAttack?.(first,second)) || 0);
+        });
         const power = attacks.length ? Math.min(...attacks) : Number(this.read(party?.pokemonAttackObservable));
-        const click = Number(party?.calculateClickAttack?.()) || 0;
+        const click = this.planningValue('clickAttack',()=>Number(party?.calculateClickAttack?.()) || 0);
         const health = Number(PokemonFactory.routeHealth?.(number,region));
         if (!(power+click > 0 && health > 0)) return {};
         // One party hit and at most one click/sec is deliberately conservative.
@@ -236,9 +253,11 @@ class AutoQuestRunner {
         const attempts = 1/(defeatSeconds+catchSeconds);
         const money = Number(PokemonFactory.routeMoney?.(number,region,false));
         const tokens = Number(PokemonFactory.routeDungeonTokens?.(number,region));
-        return {defeat:1/defeatSeconds,money:money>0 ? money/defeatSeconds : 0,
+        const rates={defeat:1/defeatSeconds,money:money>0 ? money/defeatSeconds : 0,
             capture:attempts*probability,ball:attempts,tokens:tokens>0 ? attempts*probability*tokens : 0,
             captureProbability:probability,defeatSeconds,catchSeconds};
+        this.planningMemo?.set(rateKey,rates);
+        return rates;
     }
     static chooseBall(snapshot, activity) {
         const owned=[0,1,2].filter(b=>(snapshot.resources.balls?.[b] || 0)>0);
@@ -287,8 +306,9 @@ class AutoQuestRunner {
         return snapshot.quests.filter(q=>q.known && !q.active && !q.claimed)
             .map((q,index)=>({q,index,priority:priority(q)})).sort((a,b)=>b.priority-a.priority || a.index-b.index).map(e=>e.q);
     }
-    static shopsForBall(ball) {
+    static shopsForBall(ball, fresh = false) {
         if (ball<0 || ball>2 || typeof TownList === 'undefined') return [];
+        if (!fresh && this.planningMemo?.has(`shops:${ball}`)) return this.planningMemo.get(`shops:${ball}`);
         const result=[];
         for (const town of Object.values(TownList)) {
             const target={kind:'town',name:town.name,region:town.region};
@@ -299,12 +319,46 @@ class AutoQuestRunner {
                     && item.currency===0 && item.isAvailable() && !item.isSoldOut()) result.push({shop,item,target});
             }
         }
+        if (!fresh) this.planningMemo?.set(`shops:${ball}`,result);
         return result;
     }
     static recoveryActivity(snapshot, resource) {
         const metric=resource==='dungeonToken' ? 'tokens' : 'money';
         return snapshot.activities.filter(a=>a.unlocked && a.target.kind==='route').map(a=>this.prepareActivity(a,snapshot))
             .filter(a=>a.rates[metric]>0).sort((a,b)=>b.rates[metric]-a.rates[metric] || a.id.localeCompare(b.id))[0];
+    }
+    static supplyEstimate(snapshot, activity, quests) {
+        if (activity.target.kind!=='route' && !activity.capabilities?.includes('shadow')) return {seconds:0};
+        const magic=typeof OakItemType==='undefined' ? 0 : OakItemType.Magic_Ball;
+        const captures=quests.filter(q=>['CapturePokemonsQuest','CapturePokemonTypesQuest','GainTokensQuest','CatchShiniesQuest','CatchShadowsQuest','UsePokeballQuest'].includes(q.type)
+            || q.type==='UseOakItemQuest' && q.target.item===magic);
+        if (!captures.length) return {seconds:0};
+        const unknown={seconds:null,reason:'Supply cost estimate unavailable for required standard balls'};
+        // A shiny or Shadow encounter frequency is not inferred from ordinary captures.
+        if (captures.some(q=>['CatchShiniesQuest','CatchShadowsQuest'].includes(q.type))) return unknown;
+        // Route-wide averages cannot price a type filter's conditional catches
+        // or the non-target balls spent when another quest captures all types.
+        // Keep costs unknown until consumption under that policy is modeled.
+        if (captures.some(q=>q.type==='CapturePokemonTypesQuest')) return unknown;
+        const ball=activity.pokeball ?? this.chooseBall(snapshot,activity), native=this.nativeRates(activity,ball);
+        const probability=native.captureProbability || (activity.rates?.ball>0 ? activity.rates.capture/activity.rates.ball : 0);
+        const tokens=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(activity.target.number,activity.target.region));
+        const attempts=Math.max(...captures.map(q=>q.type==='UsePokeballQuest' ? q.remaining
+            : q.remaining/(probability*(q.type==='GainTokensQuest' ? tokens : 1))));
+        if (!(Number.isFinite(attempts) && attempts>0)) return unknown;
+        const missing=Math.max(0,Math.ceil(attempts)-(snapshot.resources.balls?.[ball] || 0));
+        if (!missing) return {seconds:0};
+        const quotes=this.shopsForBall(ball).map(s=>Number(s.item.totalPrice(missing))).filter(n=>Number.isFinite(n) && n>=0);
+        if (!quotes.length) return unknown;
+        const shortfall=Math.max(0,Math.min(...quotes)-(snapshot.resources.money || 0));
+        const recovery=shortfall ? this.recoveryActivity(snapshot,'money') : null;
+        const rate=recovery?.rates.money || snapshot.rates.money;
+        if (shortfall && !(rate>0 && Number.isFinite(rate))) return unknown;
+        // Two coordinator intervals cover shop transit, purchase and resuming work.
+        // Supplied setup estimates can include known additional travel/wait time.
+        const setup=activity.supplySetupSeconds ?? .5;
+        if (!(Number.isFinite(setup) && setup>=0)) return unknown;
+        return {seconds:setup+(shortfall ? shortfall/rate+Math.max(0,recovery?.setupSeconds || 0) : 0)};
     }
     static planSupplies(snapshot, objective) {
         if (!objective) return {ready:false,reason:'No supply objective'};
@@ -320,16 +374,17 @@ class AutoQuestRunner {
         if (!needsCapture) return {ready:true,capture:{ball:-1},oakItems};
         const ball=exact?.target.pokeball ?? objective.pokeball ?? this.chooseBall(snapshot,objective);
         if (!(ball>=0 && ball<=2)) return {ready:false,reason:'Only standard balls are used automatically'};
-        const type=quests.find(q=>q.type==='CapturePokemonTypesQuest')?.target.type;
-        const capture={ball,type:quests.some(q=>q.type!=='CapturePokemonTypesQuest') || objective.recoverTokens ? undefined : type};
+        const types=[...new Set(captureQuests.filter(q=>q.type==='CapturePokemonTypesQuest').map(q=>q.target.type))];
+        const capture={ball,types:captureQuests.some(q=>q.type!=='CapturePokemonTypesQuest') || objective.recoverTokens ? undefined : types};
         // Work with existing stock first. Refill only after this short work batch is exhausted.
         if ((snapshot.resources.balls?.[ball] || 0)>0) return {ready:true,ball,capture,oakItems};
         const native=this.nativeRates(objective,ball);
         const probability=native.captureProbability || (objective.rates?.ball>0 ? objective.rates.capture/objective.rates.ball : 0);
         if (!exact && !captureQuests.some(q=>['CatchShiniesQuest','CatchShadowsQuest'].includes(q.type)) && !(probability>0)) return {ready:false,ball,reason:'Native capture probability estimate unavailable'};
         const tokenYield=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(objective.target.number,objective.target.region));
-        if (quests.some(q=>q.type==='GainTokensQuest') && !(tokenYield>0)) return {ready:false,ball,reason:'Native token yield estimate unavailable'};
-        const attempts=Math.max(1,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
+        if ((quests.some(q=>q.type==='GainTokensQuest') || objective.recoverTokens) && !(tokenYield>0)) return {ready:false,ball,reason:'Native token yield estimate unavailable'};
+        const recoveryAttempts=objective.recoverTokens ? Math.max(0,Number(objective.amount)||0)/(probability*tokenYield) : 0;
+        const attempts=Math.max(1,recoveryAttempts,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
             : q.type==='GainTokensQuest' ? q.remaining/(probability*tokenYield) : q.remaining/(probability || 1)));
         const quantity=Math.min(100,Math.ceil(attempts));
         const reserve=Math.max(0,...(objective.requirements || []).filter(p=>p.resource==='money').map(p=>Number(p.amount)||0));
@@ -351,7 +406,7 @@ class AutoQuestRunner {
     static executePurchase(plan) {
         if (!this.owner?.isCurrent()) return {status:'blocked',reason:'Expired supply session'};
         if (!(Number.isSafeInteger(plan?.quantity) && plan.quantity>0 && plan.quantity<=100 && plan.ball>=0 && plan.ball<=2)) return {status:'blocked',reason:'Invalid standard ball lot'};
-        const current=this.shopsForBall(plan.ball).find(s=>s.shop===plan.shop && s.item===plan.item);
+        const current=this.shopsForBall(plan.ball,true).find(s=>s.shop===plan.shop && s.item===plan.item);
         if (!current) return {status:'replan',reason:'Shop unavailable'};
         const stock=Number(this.read(App.game.pokeballs.pokeballs[plan.ball].quantity));
         const wallet=()=>Number(this.read(App.game.wallet.currencies[plan.item.currency]));
@@ -381,7 +436,8 @@ class AutoQuestRunner {
                 const ultra=typeof GameConstants.UltraBeastType!=='undefined' && GameConstants.UltraBeastType[pokemon?.name]!==undefined;
                 if (ultra) return GameConstants.Pokeball.None;
                 // Protect shiny encounters even when a type-only quest excludes their type.
-                const relevant=p.type==null || pokemon?.type1===p.type || pokemon?.type2===p.type;
+                const types=p.types ?? (p.type==null ? null : [p.type]);
+                const relevant=types==null || types.includes(pokemon?.type1) || types.includes(pokemon?.type2);
                 const ball=shiny && (!relevant || p.ball<0) ? [2,1,0].find(b=>this.read(balls.pokeballs[b]?.quantity)>0) : relevant ? p.ball : -1;
                 return ball>=0 && ball<=2 && this.read(balls.pokeballs[ball]?.quantity)>0 ? ball : GameConstants.Pokeball.None;
             };
@@ -489,7 +545,7 @@ class AutoQuestRunner {
                 this.acquired.push({name, adapter});
             }
         } catch (error) { this.stop(error.message); return false; }
-        this.confirmedClaims = new WeakSet(); this.executing = null; this.currentPlan = null;
+        this.confirmedClaims = new WeakSet(); this.executing = null; this.navigationAttempt = null; this.currentPlan = null;
         this.observation = null; this.observedRates = {}; this.rateSamples = {}; this.listStarted=null;
         this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
@@ -541,7 +597,7 @@ class AutoQuestRunner {
         if (!supply.ready && supply.recovery) {
             if (!this.trackRecovery(snapshot,supply.recovery)) return null;
             const recovery=supply.recovery;
-            const work={...recovery.activity,recoveryResource:recovery.resource,recoverTokens:recovery.resource==='dungeonToken'};
+            const work={...recovery.activity,recoveryResource:recovery.resource,recoverTokens:recovery.resource==='dungeonToken',amount:Math.max(0,recovery.amount-(snapshot.resources[recovery.resource] || 0))};
             // Money recovery never burns balls, so gross native income is profitable.
             const prep=recovery.resource==='money' ? {ready:true,capture:{ball:-1},oakItems:[]} : this.planSupplies(snapshot,work);
             if (!prep.ready) {this.reason=prep.reason;return null;}
@@ -601,7 +657,7 @@ class AutoQuestRunner {
             if (need) {
                 const activity=this.recoveryActivity(snapshot,need.resource);
                 if (activity && this.trackRecovery(snapshot,{...need,activity})) {
-                    primary={...activity,recoveryResource:need.resource,recoverTokens:need.resource==='dungeonToken'};recovering=true;
+                    primary={...activity,recoveryResource:need.resource,recoverTokens:need.resource==='dungeonToken',amount:need.missing};recovering=true;
                     this.reason=`Recovering ${need.resource} for ${blocked.id}`;
                 }
             }
@@ -623,7 +679,7 @@ class AutoQuestRunner {
         if (entry) {
             const activity=this.recoveryActivity(snapshot,entry.resource);
             if (!activity || !this.trackRecovery(snapshot,{...entry,activity})) {this.reason ||= `No accessible recovery for ${entry.resource}`;return;}
-            primary={...activity,recoveryResource:entry.resource,recoverTokens:entry.resource==='dungeonToken'};recovering=true;
+            primary={...activity,recoveryResource:entry.resource,recoverTokens:entry.resource==='dungeonToken',amount:entry.amount-(snapshot.resources[entry.resource] || 0)};recovering=true;
             this.reason=`Recovering ${entry.resource}`;
         }
         const recoveryReason=this.reason;
@@ -633,8 +689,14 @@ class AutoQuestRunner {
         }
         plan.primary=primary;
         const inspection=nav?.inspect();
-        if (inspection?.status==='blocked') {this.reason=inspection.reason || 'Navigation blocked';return;}
-        if (this.executing?.epoch===snapshot.epoch && this.executing.id===primary.id && !['done','ready'].includes(inspection?.status)) return;
+        // A blocked previous objective must not prevent an accessible replacement.
+        // Retry the same blocked target slowly so transient startup restrictions can clear.
+        const sameAttempt=this.navigationAttempt?.epoch===snapshot.epoch && this.navigationAttempt.id===primary.id;
+        if (inspection?.status==='blocked' && sameAttempt && Date.now()-this.navigationAttempt.time<1000) {
+            this.reason=inspection.reason || 'Navigation blocked';return;
+        }
+        if (this.executing?.epoch===snapshot.epoch && this.executing.id===primary.id && !['done','ready','blocked'].includes(inspection?.status)) return;
+        this.navigationAttempt={id:primary.id,epoch:snapshot.epoch,time:Date.now()};
         if (this.apply('navigation',{target:primary.target,count:1,
             encounters:snapshot.quests.some(q=>q.type === 'CatchShadowsQuest' && !q.claimed && q.remaining > 0 && primary.questIds?.includes(q.id)),session:{moneyBudget:Number.MAX_SAFE_INTEGER,
             tokenBudget:Number.MAX_SAFE_INTEGER,minutes:1440,stallMinutes:1440}})) {
@@ -713,6 +775,7 @@ class AutoQuestRunner {
     static tick(owner = this.owner) {
         if (!owner?.isCurrent() || this.ticking) return;
         this.ticking = true;
+        this.planningMemo = new Map();
         try {
             if (!this.reconcileQuestOwnership()) return;
             let snapshot = this.readQuestSnapshot(this.planningContext());
@@ -757,6 +820,9 @@ class AutoQuestRunner {
             const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active)};
             const plan = this.selectPlan(activeSnapshot,this.buildCandidates(activeSnapshot));
             if (this.tryRefresh(snapshot)) return;
+            // Native execution can equip items, travel or buy stock. Never reuse
+            // planning reads across those mutations or outside this turn.
+            this.planningMemo = null;
             this.executePlan(snapshot,plan); this.currentPlan = plan;
             if (this.observation) {
                 this.observation.activity = plan.primary?.id;
@@ -764,7 +830,7 @@ class AutoQuestRunner {
             }
             this.render();
         } catch (error) { this.stop(`Quest execution failed: ${error.message}`); }
-        finally { this.ticking = false; }
+        finally { this.planningMemo = null; this.ticking = false; }
     }
     static apply(name, objective) {
         if (!this.owner?.isCurrent()) return false;

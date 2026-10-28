@@ -568,7 +568,7 @@ test('quest-owned mining bypasses even a safe charged Bomb and standalone Bomb b
 
     h.clicks.length = 0;
     h.toolList[0].durability = h.toolList[1].durability = 0;
-    adapter.apply(owner, {});
+    h.tick();
     assert.deepEqual(h.clicks, [], 'owned mining waits despite a charged safe Bomb');
     assert.match(adapter.inspect().reason, /recovering/);
 
@@ -576,4 +576,65 @@ test('quest-owned mining bypasses even a safe charged Bomb and standalone Bomb b
     adapter.release(owner);
     h.w.doAutoMine();
     assert.deepEqual(h.clicks, [[0, 2]], 'standalone special tools are preserved after release');
+});
+
+function leaseMine(h) {
+    const adapter = h.w.PokeAutomationAdapters.adapters.mine;
+    const token = {active:true,isCurrent() {return this.active;},onManual(reason) {this.active=false;adapter.release(this,reason);}};
+    assert.equal(adapter.acquire(token),true);
+    return {adapter,token};
+}
+// Catches manual settings cancellation leaving restored ON without a worker.
+for (const control of ['auto-mine-battery','auto-mine-reserve-default']) {
+    test(`quest mine restores the standalone timer after real ${control} interaction`, () => {
+        const h=setup({autoMineState:true});h.w.initAutoMine();
+        const {adapter,token}=leaseMine(h);adapter.apply(token,{});
+        h.w.document.getElementById(control).click();
+        assert.equal(token.active,false);assert.equal(h.w.mineState,true);
+        assert.equal(h.timers.size,1);
+        h.clicks.length=0;h.tick();assert.equal(h.clicks.length,1);
+        assert.equal(h.timers.size,1);
+    });
+}
+// Catches using coordination apply calls as the only worker, or bypassing adaptive waits.
+test('quest mine owns an adaptive 50ms worker and coordination does not add actions', () => {
+    const h=setup({autoMineState:false,autoSellTreasure:true});h.w.initAutoMine();
+    const {adapter,token}=leaseMine(h);adapter.apply(token,{});
+    assert.equal(h.clicks.length,1);assert.equal(h.timers.size,1);
+    assert.equal(h.delays.at(-1),50);
+    for(let i=0;i<4;i++) h.tick();
+    assert.equal(h.clicks.length,5);
+    adapter.apply(token,{});assert.equal(h.clicks.length,5);
+    h.toolList[0].durability=0.01;h.toolList[0].restoreRatePerSecond=()=>0.02;
+    h.toolList[1].durability=0;h.tick();assert.equal(h.delays.at(-1),500);
+    adapter.apply(token,{});assert.equal(h.clicks.length,5);
+    h.stats(11);h.tick();assert.deepEqual(h.sales,[]);
+    token.active=false;adapter.release(token);
+    assert.equal(h.timers.size,0);assert.equal(h.w.mineState,false);
+});
+// Catches queued callbacks mining after release, or acting under an invalid quest token.
+test('released and invalid quest mine callbacks cannot mine or schedule another worker', () => {
+    const h=setup({autoMineState:true});h.w.initAutoMine();
+    const staleStandalone=[...h.timers.values()][0];
+    const {adapter,token}=leaseMine(h);adapter.apply(token,{});
+    staleStandalone();assert.equal(h.clicks.length,1);assert.equal(h.timers.size,1);
+    const staleOwned=[...h.timers.values()][0];
+    token.active=false;adapter.release(token);
+    staleOwned();assert.equal(h.clicks.length,1);assert.equal(h.timers.size,1);
+    const owned=leaseMine(h);owned.adapter.apply(owned.token,{});
+    const count=h.clicks.length;owned.token.active=false;h.tick();
+    assert.equal(h.clicks.length,count);assert.equal(h.timers.size,0);
+});
+// Catches repeated coordination waking search/battery waits before the scheduled callback.
+test('quest mine timer respects search and battery waits without replacing unfinished mines', () => {
+    const h=setup();let searches=0;
+    h.underground.generateMine=()=>{searches++;h.mine.timeUntilDiscovery=5;h.mine.completed=false;h.underground.mine=h.mine;};
+    h.underground.mine=null;h.w.initAutoMine();
+    const {adapter,token}=leaseMine(h);adapter.apply(token,{});
+    assert.equal(searches,1);assert.equal(h.delays.at(-1),1000);
+    adapter.apply(token,{});assert.equal(searches,1);assert.deepEqual(h.clicks,[]);
+    h.mine.timeUntilDiscovery=0;h.battery.activeDischargeID='Eruption';h.tick();
+    assert.equal(h.delays.at(-1),100);assert.deepEqual(h.clicks,[]);
+    h.mine.completed=true;h.tick();assert.equal(searches,1);
+    h.battery.activeDischargeID=null;h.tick();assert.equal(searches,2);
 });

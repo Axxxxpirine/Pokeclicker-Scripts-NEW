@@ -5,7 +5,7 @@
 // @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.3.3
+// @version       3.3.4
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -72,24 +72,35 @@ function questHatchTick() {
         const egg=breeding.eggList[i]?.();
         if (egg && !egg.isNone() && egg.canHatch()) breeding.hatchPokemonEgg(i);
     }
-    const party=App.game.party.caughtPokemon;
-    const fighting=party.filter(p=>!p.breeding);
-    // Preserve at least half the current party (minimum one) for the primary battle.
-    const reserve=Math.max(1,Math.ceil(party.length/2));
-    const attack=p=>Math.max(0,Number(App.game.party.calculateOnePokemonAttack?.(p,undefined,undefined,undefined,undefined,true) ?? p.attack ?? 1) || 0);
-    const totalAttack=party.reduce((sum,p)=>sum+attack(p),0);
-    let removedAttack=totalAttack-fighting.reduce((sum,p)=>sum+attack(p),0), added=0;
-    if (!breeding.queueList?.().length && breeding.hasFreeEggSlot()) {
-        for (const p of [...fighting].sort((a,b)=>attack(a)-attack(b))) {
-            if (!breeding.hasFreeEggSlot() || fighting.length-added <= reserve) break;
-            if (p.level < 100 || p.breeding || (p.isHatchable && !p.isHatchable())) continue;
-            if (questHatchObjective?.type != null) {
-                const data=PokemonHelper.getPokemonById(p.id);
-                if (![data?.type1,data?.type2].includes(questHatchObjective.type)) continue;
-            }
-            const contribution=attack(p);
-            if (removedAttack+contribution > totalAttack/2) continue;
-            if (breeding.addPokemonToHatchery(p)) {added++;removedAttack+=contribution;}
+    // Native queues own the free slots. Avoid scanning a large party when nothing can be added.
+    if (breeding.queueList?.().length || !breeding.hasFreeEggSlot()) {
+        questHatchStatus={status:'waiting',reason:breeding.queueList?.().length ? 'Waiting for native hatchery queue':'Waiting for battle egg steps',
+            progress:0,nextWake:Date.now()+1000};
+        return;
+    }
+    const party=App.game.party;
+    const combatants=party.partyPokemonActiveInSubRegion?.(typeof player === 'undefined' ? undefined : player.region,typeof player === 'undefined' ? undefined : player.subregion) ?? party.caughtPokemon;
+    const combatSet=new Set(combatants);
+    // Only native subregion combatants can satisfy the reserve (not other species in Magikarp Jump).
+    const reserve=Math.max(1,Math.ceil(combatants.length/2));
+    const ignoreRegion=typeof GameConstants !== 'undefined' && typeof player !== 'undefined'
+        && player.region === GameConstants.Region?.alola && player.subregion === GameConstants.AlolaSubRegions?.MagikarpJump;
+    const attacks=new Map(combatants.map(p=>[p,Math.max(0,Number(party.calculateOnePokemonAttack?.(p,undefined,undefined,undefined,ignoreRegion,true) ?? p.attack ?? 1) || 0)]));
+    const attack=p=>attacks.get(p) ?? 0;
+    const totalAttack=combatants.reduce((sum,p)=>sum+attack(p),0);
+    let fighting=combatants.filter(p=>!p.breeding).length;
+    let removedAttack=combatants.filter(p=>p.breeding).reduce((sum,p)=>sum+attack(p),0), added=0;
+    for (const p of party.caughtPokemon.filter(p=>!p.breeding).sort((a,b)=>attack(a)-attack(b))) {
+        if (!breeding.hasFreeEggSlot()) break;
+        if (p.level < 100 || p.breeding || (p.isHatchable && !p.isHatchable())) continue;
+        if (questHatchObjective?.type != null) {
+            const data=PokemonHelper.getPokemonById(p.id);
+            if (![data?.type1,data?.type2].includes(questHatchObjective.type)) continue;
+        }
+        if (combatSet.has(p) && (fighting <= reserve || removedAttack+attack(p) > totalAttack/2)) continue;
+        if (breeding.addPokemonToHatchery(p)) {
+            added++;
+            if (combatSet.has(p)) {fighting--;removedAttack+=attack(p);}
         }
     }
     questHatchStatus={status:'waiting',reason:breeding.queueList?.().length ? 'Waiting for native hatchery queue':'Waiting for battle egg steps or eligible level 100 breeders',

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {load,observable:o} = require('./helpers.cjs');
+const {load,observable:o,Currency} = require('./helpers.cjs');
 
 for (const desktop of [false,true]) {
     test(`${desktop ? 'desktop' : 'browser'} wrapper earns supplies captures hatches claims next list and restores`, () => {
@@ -19,7 +19,7 @@ for (const desktop of [false,true]) {
         const r = w.AutoQuestRunner;
         assert.ok(r);
         assert.equal(r.active,false);
-        w.GameConstants = {Currency:{money:0,dungeonToken:1,questPoint:2},Pokeball:{None:-1}};
+        w.GameConstants = {Currency,Pokeball:{None:-1}};
         w.OakItemType = {Magic_Ball:0};
         const wallet = [o(0),o(0),o(0)];
         const balls = [0,0,0,99].map(n=>({quantity:o(n)}));
@@ -44,8 +44,8 @@ for (const desktop of [false,true]) {
         w.App.game.quests = {
             questList:()=>list,questSlots:()=>2,canStartNewQuest:()=>true,calcListBonus:()=>2,
             beginQuest(i){events.push('accept');list[i].initial(list[i].focus());},
-            claimQuest(i){events.push('claim');list[i].claimed(true);wallet[2](wallet[2]()+10);
-                if(list.every(q=>q.claimed())) {wallet[2](wallet[2]()+2);list=[quest('GainMoneyQuest',()=>0)];generation++;}},
+            claimQuest(i){events.push('claim');list[i].claimed(true);wallet[1](wallet[1]()+10);
+                if(list.every(q=>q.claimed())) {wallet[1](wallet[1]()+2);list=[quest('GainMoneyQuest',()=>0)];generation++;}},
         };
         let navState = 'ready', hatchEnabled = false;
         const registry = w.PokeAutomationAdapters;
@@ -77,7 +77,7 @@ for (const desktop of [false,true]) {
         assert.equal(captureQuest.claimed(),true);
         assert.equal(hatchQuest.claimed(),true);
         assert.equal(generation,1);
-        assert.equal(wallet[2](),22);
+        assert.equal(wallet[1](),22);
         r.stop();
         assert.equal(r.active,false);
         assert.equal(hatchEnabled,false);

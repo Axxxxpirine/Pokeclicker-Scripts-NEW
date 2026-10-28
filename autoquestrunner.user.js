@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.8
+// @version       1.1.10
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -17,6 +17,7 @@
 class AutoQuestRunner {
     static version = 1;
     static active = false;
+    static refreshPending = false;
     static acquired = [];
     // Rates are useful native progress units per second, measured by the runtime.
     // Missing rates remain unknown rather than fabricating completion estimates.
@@ -236,7 +237,15 @@ class AutoQuestRunner {
         const exploratory = candidates.filter(c => c.exploratory).sort((a,b) => a.id.localeCompare(b.id));
         const available = [...ranked,...exploratory];
         const background = [], modules = new Set();
-        for (const candidate of available.filter(c => ['farm','hatchery','mine'].includes(c.module))) {
+        // Start long-growing quest crops before generic point farming, even
+        // without a measured yield. Accepted harvests keep their plots ahead
+        // of preparation for another berry whose quest still needs a slot.
+        const harvestPriority = c => c.module === 'farm' ? Math.max(0,...snapshot.quests
+            .filter(q=>q.type === 'HarvestBerriesQuest' && c.questIds.includes(q.id))
+            .map(q=>q.active ? 2 : 1)) : 0;
+        const backgrounds = available.filter(c => ['farm','hatchery','mine'].includes(c.module))
+            .sort((a,b)=>harvestPriority(b)-harvestPriority(a));
+        for (const candidate of backgrounds) {
             if (!modules.has(candidate.module)) { modules.add(candidate.module); background.push(candidate); }
         }
         let primary = available.find(c => !modules.has(c.module)) || null;
@@ -333,7 +342,10 @@ class AutoQuestRunner {
         const priority = q => Math.max(0,...candidates.filter(c => c.questIds.includes(q.id) && (!c.entryPrerequisites.length || c.entryPrerequisites.every(p=>['money','dungeonToken'].includes(p.resource))))
             .map(c => c.score>0 ? c.score : c.exploratory ? 0.000001 : 0));
         return snapshot.quests.filter(q=>q.known && !q.active && !q.claimed)
-            .map((q,index)=>({q,index,priority:priority(q)})).sort((a,b)=>b.priority-a.priority || a.index-b.index).map(e=>e.q);
+            .map((q,index)=>({q,index,priority:priority(q)}))
+            .sort((a,b)=>Number(b.q.type === 'HarvestBerriesQuest' && b.priority>0)
+                - Number(a.q.type === 'HarvestBerriesQuest' && a.priority>0)
+                || b.priority-a.priority || a.index-b.index).map(e=>e.q);
     }
     static shopsForBall(ball, fresh = false) {
         if (ball<0 || ball>2 || typeof TownList === 'undefined') return [];
@@ -536,6 +548,10 @@ class AutoQuestRunner {
         w.AutoQuestRunner = this;
         this.registry();
         if (document.getElementById('auto-quest-runner')) return;
+        let savedTimer;
+        try { savedTimer=JSON.parse(localStorage.getItem('autoQuestRunnerRefreshTimer')); } catch {}
+        this.refreshTimerEnabled=savedTimer?.enabled === true;
+        this.refreshTimerMinutes=Number.isSafeInteger(savedTimer?.minutes) && savedTimer.minutes>=1 && savedTimer.minutes<=1440 ? savedTimer.minutes : 10;
         const panel = document.createElement('section');
         panel.id = 'auto-quest-runner-panel';
         panel.className = 'p-2 border-top';
@@ -549,11 +565,56 @@ class AutoQuestRunner {
         status.id = 'auto-quest-runner-status';
         status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
         status.setAttribute('aria-atomic','true'); status.style.marginTop = '6px';
-        panel.append(button,status);
+        const reset = document.createElement('div');
+        reset.className = 'my-2';
+        reset.innerHTML = '<label><input id="auto-quest-refresh-enabled" type="checkbox"> Auto reset</label> '
+            + '<label>every <input id="auto-quest-refresh-minutes" type="number" min="1" max="1440" step="1" aria-label="Quest reset interval in minutes" style="width:5em"> min</label>'
+            + '<div class="text-muted">Uses free resets first, otherwise pays the game’s price.</div><div id="auto-quest-refresh-status"></div>';
+        const toggle=reset.querySelector('#auto-quest-refresh-enabled'), minutes=reset.querySelector('#auto-quest-refresh-minutes');
+        toggle.checked=this.refreshTimerEnabled;minutes.value=this.refreshTimerMinutes;
+        toggle.addEventListener('change',()=>this.setRefreshTimer(toggle.checked,this.refreshTimerMinutes));
+        minutes.addEventListener('change',()=>{
+            this.setRefreshTimer(this.refreshTimerEnabled,Number(minutes.value));
+            minutes.value=this.refreshTimerMinutes;
+        });
+        panel.append(button,reset,status);
         const questPanel = document.getElementById('questDisplayContainer');
         if (questPanel) questPanel.append(panel);
         else document.querySelector('.battle-view')?.before(panel);
         this.render();
+    }
+    static setRefreshTimer(enabled, minutes) {
+        if (typeof enabled !== 'boolean' || !Number.isSafeInteger(minutes) || minutes<1 || minutes>1440) return false;
+        this.refreshTimerEnabled=enabled;this.refreshTimerMinutes=minutes;
+        localStorage.setItem('autoQuestRunnerRefreshTimer',JSON.stringify({enabled,minutes}));
+        this.refreshTimerDeadline=this.active && enabled ? Date.now()+minutes*60000 : null;
+        this.refreshTimerEpoch=this.questEpoch;
+        this.render();return true;
+    }
+    static syncRefreshTimer(snapshot, now = Date.now()) {
+        if (!this.active || !this.refreshTimerEnabled) {this.refreshTimerDeadline=null;return;}
+        if (this.refreshTimerEpoch!==snapshot.epoch || this.refreshTimerDeadline==null) {
+            this.refreshTimerEpoch=snapshot.epoch;
+            this.refreshTimerDeadline=now+this.refreshTimerMinutes*60000;
+        }
+    }
+    static renderRefreshTimer() {
+        const status=document.getElementById('auto-quest-refresh-status');
+        if (!status) return;
+        const toggle=document.getElementById('auto-quest-refresh-enabled');
+        if (toggle) toggle.checked=!!this.refreshTimerEnabled;
+        let text='Reset timer OFF';
+        if (this.refreshTimerEnabled) {
+            const native=App.game.quests;
+            const cost=this.read(native?.freeRefresh) ? 0 : Number(native?.getRefreshCost?.().amount);
+            const seconds=Math.max(0,Math.ceil(((this.refreshTimerDeadline ?? Date.now())-Date.now())/1000));
+            const price=Number.isFinite(cost) && cost>=0 ? `${cost} money` : 'unavailable';
+            text=!this.active ? 'Reset timer paused (Auto Quests OFF)' : this.refreshPending ? 'Resetting quest list…'
+                : seconds>0 ? `Next reset in ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · Current cost: ${price}`
+                : cost>0 && !native?.canAffordRefresh?.() ? `Reset waiting for funds · Current cost: ${price}`
+                : `Reset due · Current cost: ${price}`;
+        }
+        if (status.textContent!==text) status.textContent=text;
     }
     static start(names = ['navigation']) {
         if (this.active) return false;
@@ -579,6 +640,7 @@ class AutoQuestRunner {
         } catch (error) { this.stop(error.message); return false; }
         this.confirmedClaims = new WeakSet(); this.executing = null; this.navigationAttempt = null; this.currentPlan = null;
         this.observation = null; this.observedRates = {}; this.rateSamples = {}; this.listStarted=null;
+        this.refreshTimerEpoch=null;this.refreshTimerDeadline=null;
         this.spend={money:0,dungeonToken:0};this.recoveryState=null;this.recoveryStates=null;this.supplyBlocked=null;
         if (App.game.quests?.questList) {
             if (!this.reconcileQuestOwnership()) return false;
@@ -674,7 +736,13 @@ class AutoQuestRunner {
                 this.acquired.push({name,adapter});
             }
             const quest=snapshot.quests.find(q=>activity.questIds?.includes(q.id) && q.active && !q.claimed && q.remaining > 0);
-            adapter.apply(this.owner,{...quest?.target,berryType:activity.berryType ?? quest?.target.berryType,type:activity.type ?? quest?.target.type});
+            const harvests = activity.module === 'farm' ? snapshot.quests.filter(q=>q.type === 'HarvestBerriesQuest'
+                && !q.claimed && q.remaining > 0 && q.target.berryType === activity.berryType) : [];
+            // Points earned from this crop may be needed to free the slot.
+            const harvestReady = harvests.some(q=>q.active) || snapshot.quests.some(q=>q.type === 'GainFarmPointsQuest'
+                && q.active && !q.claimed && q.remaining > 0);
+            adapter.apply(this.owner,{...quest?.target,berryType:activity.berryType ?? quest?.target.berryType,type:activity.type ?? quest?.target.type,
+                ...(harvests.length ? {harvestReady} : {})});
         }
         // Hatching and leveling breeders need real route battles even if no route
         // directly contributes to the accepted quests. Farm/mine waits need none.
@@ -781,24 +849,34 @@ class AutoQuestRunner {
     static tryRefresh(snapshot, estimates = {}) {
         const native=App.game.quests;
         if (!this.owner?.isCurrent() || this.refreshPending || typeof native?.refreshQuests!=='function') return false;
+        const now=estimates.now ?? Date.now();
+        this.syncRefreshTimer(snapshot,now);
         const free=!!this.read(native.freeRefresh),cost=free ? 0 : Number(native.getRefreshCost?.().amount);
         if (!(Number.isFinite(cost) && cost>=0)) return false;
-        const decision=this.evaluateRefresh(snapshot,{...this.refreshEstimates(snapshot),...estimates,refreshCost:cost});
+        const timerDue=this.refreshTimerEnabled && this.refreshTimerDeadline!=null && now>=this.refreshTimerDeadline
+            && snapshot.quests.some(q=>!q.claimed && q.remaining>0) && !snapshot.quests.some(q=>!q.claimed && q.remaining===0);
+        const decision=timerDue ? {refresh:true} : this.evaluateRefresh(snapshot,{...this.refreshEstimates(snapshot),...estimates,refreshCost:cost});
         if (!decision.refresh || cost>0 && !native.canAffordRefresh?.()) return false;
         // Cancel old-list work before the native mutation, including pending navigation.
-        for (const entry of [...this.acquired]) if (['frontier','navigation'].includes(entry.name)) {
+        for (const entry of [...this.acquired]) if (['farm','hatchery','mine','frontier','navigation'].includes(entry.name)) {
             entry.adapter.release(this.owner,'Quest list refresh');
             this.acquired=this.acquired.filter(e=>e!==entry);
         }
         this.releaseSupplies();this.executing=null;
         const owner=this.owner,nav=this.registry().adapters.navigation;
         if (nav?.acquire(owner)) this.acquired.push({name:'navigation',adapter:nav});
-        this.refreshAfter=(estimates.now ?? Date.now())+300000;this.refreshPending=true;
+        this.refreshAfter=now+300000;this.refreshPending=true;
+        // A refusal or rejected native request must not spend/retry every tick.
+        if (this.refreshTimerEnabled) this.refreshTimerDeadline=now+this.refreshTimerMinutes*60000;
         try {
             const result=native.refreshQuests(free,false);
-            Promise.resolve(result).then(()=>{this.refreshPending=false;},error=>{this.refreshPending=false;if (owner.isCurrent()) this.reason=`Native refresh failed: ${error.message}`;});
+            // Native refresh belongs to the game, so OFF/ON cannot cancel it
+            // or remove its in-flight guard before this promise settles.
+            Promise.resolve(result).then(()=>{this.refreshPending=false;},error=>{
+                this.refreshPending=false;if(this.active)this.reason=`Native refresh failed: ${error.message}`;
+            });
         } catch (error) {this.refreshPending=false;throw error;}
-        this.listStarted=null;return true;
+        this.listStarted=null;this.currentPlan=null;this.render();return true;
     }
     static reconcileQuestOwnership() {
         if (!this.owner?.isCurrent()) return false;
@@ -816,7 +894,9 @@ class AutoQuestRunner {
         this.planningMemo = new Map();
         try {
             if (!this.reconcileQuestOwnership()) return;
+            if (this.refreshPending) {this.render();return;}
             let snapshot = this.readQuestSnapshot(this.planningContext());
+            this.syncRefreshTimer(snapshot);
             this.observeProgress(snapshot);
             this.listStarted ||= {epoch:snapshot.epoch,time:Date.now(),whole:snapshot.quests.every(q=>!q.claimed && q.remaining===q.amount)};
             if (this.listStarted.epoch!==snapshot.epoch) this.listStarted={epoch:snapshot.epoch,time:Date.now(),whole:snapshot.quests.every(q=>!q.claimed && q.remaining===q.amount)};
@@ -854,8 +934,9 @@ class AutoQuestRunner {
                 App.game.quests.beginQuest(this.questObjects.indexOf(current.native));
             }
             snapshot = this.readQuestSnapshot(this.planningContext());
-            // Pending slot entries cannot steal execution from accepted quests.
-            const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active)};
+            // Grow visible quest berries while waiting for a slot. Other pending
+            // objectives still cannot alter accepted combat/capture policies.
+            const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active || q.type === 'HarvestBerriesQuest')};
             const candidates = this.buildCandidates(activeSnapshot);
             const plan = this.selectPlan(activeSnapshot,candidates);
             if (this.tryRefresh(snapshot)) return;
@@ -891,6 +972,7 @@ class AutoQuestRunner {
         return currency == null ? 0 : Number(this.read(App.game.wallet?.currencies?.[currency])) || 0;
     }
     static render() {
+        this.renderRefreshTimer();
         const button = document.getElementById('auto-quest-runner');
         if (button) {
             button.textContent = `Auto Quests: ${this.active ? 'ON' : 'OFF'}`;

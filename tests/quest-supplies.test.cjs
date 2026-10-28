@@ -22,6 +22,39 @@ test('supply lots use native geometric quotes, remaining need and standard balls
  snapshot.quests[0].remaining=3;snapshot.quests[0].type='UsePokeballQuest';snapshot.quests[0].target={pokeball:0};p=r.planSupplies(snapshot,activity);assert.equal(p.purchase.quantity,3);
  snapshot.quests[0].type='UsePokeballQuest';snapshot.quests[0].target={pokeball:3};p=r.planSupplies(snapshot,activity);assert.match(p.reason,/standard|Master/i);assert.equal(p.purchase,undefined);
 });
+test('one shiny refills a sustained batch and keeps working instead of returning after two balls',()=>{
+ const {r,w,snapshot,activity,q,town,balls,f}=fixture();
+ q.type='CatchShiniesQuest';q.remaining=1;activity.capabilities.push('shiny');
+ snapshot.resources.money=100000000;w.App.game.wallet.currencies[0](100000000);
+ const purchase=r.planSupplies(snapshot,activity).purchase;
+ assert.equal(purchase.quantity,1000);
+ w.player.route=0;w.player.town=town;
+ assert.equal(r.executePurchase(purchase).status,'bought');
+ assert.equal(balls[0].quantity(),1000);
+ for(let used=1;used<=999;used++){
+  balls[0].quantity(1000-used);snapshot.resources.balls[0]=1000-used;
+  const next=r.planSupplies(snapshot,activity);
+  assert.equal(next.ready,true,`continue after ${used} attempts`);
+  assert.equal(next.purchase,undefined);
+ }
+ f.dom.window.close();
+});
+test('shiny batch respects affordable stock and native quotes',()=>{
+ const {r,snapshot,activity,q,f}=fixture();
+ q.type='CatchShiniesQuest';q.remaining=1;activity.capabilities.push('shiny');snapshot.resources.money=1000;
+ const purchase=r.planSupplies(snapshot,activity).purchase;
+ assert.equal(purchase.quantity,10);
+ assert.equal(purchase.quote,1000);
+ f.dom.window.close();
+});
+test('finished shiny does not inflate a remaining exact-ball quest',()=>{
+ const {r,snapshot,activity,q,f}=fixture();
+ snapshot.quests=[{...q,type:'CatchShiniesQuest',remaining:0,claimed:true},
+  {...q,id:'ball',type:'UsePokeballQuest',remaining:2,target:{pokeball:0}}];
+ activity.capabilities.push('shiny');
+ assert.equal(r.planSupplies(snapshot,activity).purchase.quantity,2);
+ f.dom.window.close();
+});
 test('purchases require native shop presence, fresh quotes wallet inventory and actual deltas',()=>{
  const {r,w,snapshot,activity,balls,item,town}=fixture();const p=r.planSupplies(snapshot,activity).purchase;
  assert.equal(r.executePurchase(p).status,'travel');assert.equal(balls[0].quantity(),0);

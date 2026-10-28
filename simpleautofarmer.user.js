@@ -5,7 +5,7 @@
 // @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture, a stop timer, manual mutation plans and bounded pre-maturity Rich Mulch share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.5
+// @version       1.9.6
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -108,6 +108,9 @@ function initAutoFarm() {
                 const plot=farming.plotList[index];
                 // Designated mutation plots remain commitments even while the mode is OFF.
                 if (!plot || !plot.isUnlocked || plot.isSafeLocked || validBerry(mutationPlan[index])) continue;
+                // Quest progress starts on acceptance. Prepare its crop now,
+                // but leave the requested berries for the accepted harvest.
+                if (objective.harvestReady === false && plot.berry === berry) continue;
                 if (plot.berry !== -1) {
                     // Transition only at maturity, and only with stock to replace unrelated crops.
                     const canReplace = validBerry(berry) && farming.berryInventory[berry]() > (planState ? planReserve : 0);

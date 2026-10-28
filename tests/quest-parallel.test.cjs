@@ -504,6 +504,95 @@ function attachRunner(h, type, target = {}) {
   return h.w.AutoQuestRunner;
 }
 
+// Catches measured point farming outranking an unmeasured requested harvest.
+test("requested berries take the farm ahead of faster point farming regardless of list order", () => {
+  const h = farm();
+  h.farming.berryInventory[1](5);
+  const r = attachRunner(h, "HarvestBerriesQuest", {berryType:1});
+  const berry = h.w.App.game.quests.questList()[0];
+  const points = {constructor:{name:"GainFarmPointsQuest"},amount:10,pointsReward:1000,initial:o(0),focus:o(0),claimed:o(false)};
+  for (const list of [[points,berry],[berry,points]]) {
+    h.w.App.game.quests.questList = () => list;
+    const s = r.readQuestSnapshot();
+    s.activities.find(a=>a.id === "farm:points").rates = {farmPoints:100};
+    const p = r.selectPlan(s,r.buildCandidates(s));
+    assert.equal(p.background.find(a=>a.module === "farm").berryType,1);
+  }
+  h.dom.window.close();
+});
+
+function farmQueueFixture() {
+  const h = farm();
+  h.farming.berryInventory[1](5);
+  const r = attachRunner(h,"HarvestBerriesQuest",{berryType:1,amount:64});
+  const berry = h.w.App.game.quests.questList()[0];
+  berry.initial(null);
+  const points = {constructor:{name:"GainFarmPointsQuest"},amount:100,pointsReward:1000,initial:o(null),focus:o(0),claimed:o(false)};
+  const list = [points,berry];
+  Object.assign(h.w.App.game.quests,{
+    questList:()=>list,questSlots:()=>1,
+    canStartNewQuest:()=>!list.some(q=>q.initial()!=null && !q.claimed()),
+    beginQuest:i=>list[i].initial(list[i].focus()),
+  });
+  h.w.PokeAutomationAdapters.adapters.navigation = {
+    acquire:()=>true,release(){},inspect:()=>({status:"ready"}),apply:()=>true,
+  };
+  return {...h,r,berry,points,list};
+}
+
+test("available harvest quest gets the next slot before earlier point work", () => {
+  const h = farmQueueFixture();
+  assert.equal(h.r.start(),true);
+  assert.equal(h.berry.initial(),0);
+  assert.equal(h.points.initial(),null);
+  assert.deepEqual(h.actions,[["plant",0,1],["plant",1,1],["plant",2,1],["plant",4,1]]);
+  h.r.stop();h.dom.window.close();
+});
+
+test("full quest slots still plant pending berries and reserve their harvest until acceptance", () => {
+  const h = farmQueueFixture();
+  h.points.constructor = {name:"MineItemsQuest"};
+  h.points.initial(0);
+  assert.equal(h.r.start(),true);
+  assert.equal(h.berry.initial(),null);
+  assert.deepEqual(h.actions,[["plant",0,1],["plant",1,1],["plant",2,1],["plant",4,1]]);
+  h.actions.length = 0;
+  h.r.tick();
+  assert.deepEqual(h.actions,[],"requested mature berries must wait for a slot before harvesting");
+  h.points.claimed(true);
+  h.r.tick();
+  assert.equal(h.berry.initial(),0);
+  assert.equal(h.actions.filter(a=>a[0] === "harvest").length,4);
+  h.r.stop();h.dom.window.close();
+});
+
+test("pending berry preparation keeps harvesting for accepted farm points so their slot can clear", () => {
+  const h = farmQueueFixture();
+  h.points.initial(0);
+  const harvest = h.farming.harvest.bind(h.farming);
+  h.farming.harvest = i => {harvest(i);h.points.focus(h.points.focus()+25);};
+  h.w.App.game.quests.claimQuest = i => h.list[i].claimed(true);
+  assert.equal(h.r.start(),true);
+  assert.ok(h.actions.every(a=>a[0] === "plant" && a[2] === 1));
+  h.r.tick();
+  assert.equal(h.points.focus(),100,"preparation must not deadlock the accepted points quest");
+  h.r.tick();
+  assert.equal(h.points.claimed(),true);
+  h.r.tick();
+  assert.equal(h.berry.initial(),0);
+  h.r.stop();h.dom.window.close();
+});
+
+test("pending berries cannot displace an accepted harvest of another berry", () => {
+  const h = farmQueueFixture();
+  h.berry.berryType = 0;
+  Object.assign(h.points,{constructor:{name:"HarvestBerriesQuest"},berryType:1});
+  h.points.initial(0);
+  assert.equal(h.r.start(),true);
+  assert.deepEqual(h.actions,[["plant",0,1],["plant",1,1],["plant",2,1],["plant",4,1]]);
+  h.r.stop();h.dom.window.close();
+});
+
 // Catches the points-only loop endlessly replanting the wrong berry while shiny work continues.
 test("berry quest waits for existing crops then replants the requested berry alongside shiny and farm points", () => {
   const h = farm();

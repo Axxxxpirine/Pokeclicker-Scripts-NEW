@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.6
+// @version       1.1.8
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -300,6 +300,11 @@ class AutoQuestRunner {
         return this.activityMatches(quest,activity);
     }
     static prepareActivity(activity, snapshot) {
+        // The requested harvest also earns farm points. Keep both goals on the
+        // same crop instead of letting generic point farming monopolize the plots.
+        if (activity.module === 'farm' && snapshot.quests.some(q => q.type === 'HarvestBerriesQuest'
+            && !q.claimed && q.remaining > 0 && this.activityMatches(q,activity)))
+            return {...activity,capabilities:[...(activity.capabilities || ['berries']),'farmPoints']};
         if (activity.target.kind !== 'route') return activity;
         const matching = snapshot.quests.filter(q => !q.claimed && q.remaining>0 && this.policyMatches(q,activity));
         const required = matching.find(q => q.type === 'UsePokeballQuest' && q.target.pokeball >= 0 && q.target.pokeball <= 2);
@@ -652,7 +657,7 @@ class AutoQuestRunner {
         if (App.game.pokeballs?.calculatePokeballToUse && !this.applyCapturePolicy(supply.capture)) {this.reason='Capture policy controlled by another session';return null;}
         return {...primary,capturePolicy:supply.capture};
     }
-    static executePlan(snapshot, plan) {
+    static executePlan(snapshot, plan, candidates = null) {
         const wanted=new Set((plan.background || []).map(a=>a.module));
         if (plan.primary?.module==='frontier') wanted.add('frontier');
         for (const entry of [...this.acquired]) {
@@ -681,7 +686,10 @@ class AutoQuestRunner {
         let primary=plan.primary, recovering=false;
         // A cost prerequisite is an executable preparation objective, not a dead end.
         if (!primary) {
-            const candidates=this.buildCandidates({...snapshot,quests:snapshot.quests.filter(q=>q.active)});
+            // Reuse this tick's accepted-quest candidates. Rebuilding here runs
+            // after the planning memo was cleared and repeats every route's
+            // party/click attack scan, even when only farm or mine work remains.
+            candidates ??= this.buildCandidates({...snapshot,quests:snapshot.quests.filter(q=>q.active)});
             const blocked=candidates.find(c=>c.entryPrerequisites.length && c.entryPrerequisites.every(p=>['money','dungeonToken'].includes(p.resource)));
             const need=blocked?.entryPrerequisites[0];
             if (need) {
@@ -848,12 +856,13 @@ class AutoQuestRunner {
             snapshot = this.readQuestSnapshot(this.planningContext());
             // Pending slot entries cannot steal execution from accepted quests.
             const activeSnapshot = {...snapshot,quests:snapshot.quests.filter(q => q.active)};
-            const plan = this.selectPlan(activeSnapshot,this.buildCandidates(activeSnapshot));
+            const candidates = this.buildCandidates(activeSnapshot);
+            const plan = this.selectPlan(activeSnapshot,candidates);
             if (this.tryRefresh(snapshot)) return;
             // Native execution can equip items, travel or buy stock. Never reuse
             // planning reads across those mutations or outside this turn.
             this.planningMemo = null;
-            this.executePlan(snapshot,plan); this.currentPlan = plan;
+            this.executePlan(snapshot,plan,candidates); this.currentPlan = plan;
             if (this.observation) {
                 this.observation.activity = plan.primary?.id;
                 this.observation.quests = snapshot.quests;

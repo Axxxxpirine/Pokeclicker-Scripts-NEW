@@ -300,6 +300,27 @@ test('unknown supply cost prevents a fabricated profitable capture estimate',()=
  assert.equal(candidate.seconds,null);assert.equal(candidate.score,0);assert.match(candidate.reason,/supply|ball|shop/i);
 });
 
+test('background-only quests do not repeat route attack scans during execution with empty ball stock',()=>{
+ const {r,w,f}=fixture();let attacks=0,clicks=0,applies=0;
+ r.confirmedClaims=new WeakSet();w.MapHelper.accessToRoute=()=>true;
+ w.App.game.party.calculatePokemonAttack=()=>{attacks++;return 100;};
+ w.App.game.party.calculateClickAttack=()=>{clicks++;return 0;};
+ w.pokemonMap={Normal:{name:'Normal',type:[0],catchRate:100}};
+ w.Routes={regionRoutes:Array.from({length:30},(_,i)=>({number:i+1,region:0,isUnlocked:()=>true}))};
+ w.RouteHelper={getAvailablePokemonList:()=>['Normal']};
+ const quest={constructor:{name:'MineItemsQuest'},amount:5,pointsReward:10,initial:()=>0,focus:()=>0,claimed:()=>false};
+ w.App.game.quests={questList:()=>[quest],canStartNewQuest:()=>false};
+ w.PokeAutomationAdapters.adapters.mine={acquire:()=>true,release(){},
+  inspect:()=>({status:'waiting',activities:[{id:'mine:items',target:{kind:'mine'},unlocked:true,capabilities:['items'],rates:{}}]}),
+  apply(){applies++;assert.equal(r.planningMemo,null,'no planning cache survives into native actions');return true;}};
+ r.tick();
+ assert.equal(r.active,true,r.reason);assert.equal(r.currentPlan.primary,null);assert.equal(applies,1);
+ assert.ok(attacks<=1,`background-only tick traversed the party ${attacks} times`);
+ assert.ok(clicks<=1,`background-only tick recalculated click attack ${clicks} times`);
+ r.tick();assert.equal(applies,2);assert.ok(attacks<=2,'next tick refreshes without redundant execution scans');
+ f.dom.window.close();
+});
+
 test('one planning tick bounds native attack and encounter work and later ticks refresh every input',()=>{
  const {r,w,balls}=fixture();let attacks=0,clicks=0,encounters=0,power=100,bonus=0,health=100,type=0;
  balls[0].quantity(1000);balls[1].quantity(0);r.confirmedClaims=new WeakSet();w.MapHelper.accessToRoute=()=>true;

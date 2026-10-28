@@ -5,7 +5,7 @@
 // @description   Adds options to automatically plant, harvest, replant, and remulch. Unlike harvesting, replanting only harvests berries right before they wither, to maximize any auras. Make sure the correct berry is selected before auto planting; the script will save your selection across restarts. Auto replant and mulch maintain the berry/mulch already in each plot. Optional wanderer capture, a stop timer, manual mutation plans and bounded pre-maturity Rich Mulch share the farm loop.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.9.4
+// @version       1.9.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -86,6 +86,7 @@ function initAutoFarm() {
         if (growing) return {status:'waiting',reason:'Waiting for natural berry growth'};
         if (!stock) return {status:'blocked',reason:'Requested berry stock absent, no supported native acquisition available'};
         return usable.some(plot=>plot.berry === -1) ? {status:'ready'}
+            : usable.length ? {status:'waiting',reason:'Waiting for current crops to mature before planting the requested berry'}
             : {status:'blocked',reason:'No usable farm plot for the requested berry'};
     };
     registry.adapters.farm = {
@@ -108,7 +109,9 @@ function initAutoFarm() {
                 // Designated mutation plots remain commitments even while the mode is OFF.
                 if (!plot || !plot.isUnlocked || plot.isSafeLocked || validBerry(mutationPlan[index])) continue;
                 if (plot.berry !== -1) {
-                    if ((objective.berryType == null || plot.berry === berry) && typeof PlotStage !== 'undefined' && plot.stage?.() === PlotStage.Berry) {
+                    // Transition only at maturity, and only with stock to replace unrelated crops.
+                    const canReplace = validBerry(berry) && farming.berryInventory[berry]() > (planState ? planReserve : 0);
+                    if ((objective.berryType == null || plot.berry === berry || canReplace) && typeof PlotStage !== 'undefined' && plot.stage?.() === PlotStage.Berry) {
                         farming.harvest(index);progress++;
                     }
                 }

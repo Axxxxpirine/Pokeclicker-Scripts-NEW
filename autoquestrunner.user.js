@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.6
+// @version       1.1.7
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -300,6 +300,11 @@ class AutoQuestRunner {
         return this.activityMatches(quest,activity);
     }
     static prepareActivity(activity, snapshot) {
+        // The requested harvest also earns farm points. Keep both goals on the
+        // same crop instead of letting generic point farming monopolize the plots.
+        if (activity.module === 'farm' && snapshot.quests.some(q => q.type === 'HarvestBerriesQuest'
+            && !q.claimed && q.remaining > 0 && this.activityMatches(q,activity)))
+            return {...activity,capabilities:[...(activity.capabilities || ['berries']),'farmPoints']};
         if (activity.target.kind !== 'route') return activity;
         const matching = snapshot.quests.filter(q => !q.claimed && q.remaining>0 && this.policyMatches(q,activity));
         const required = matching.find(q => q.type === 'UsePokeballQuest' && q.target.pokeball >= 0 && q.target.pokeball <= 2);

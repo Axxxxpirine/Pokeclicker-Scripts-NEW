@@ -68,6 +68,7 @@ test("farm lease uses stock below default reserve, preserves protected occupied 
   const t = owner(h.adapter);
   h.plots[0].isSafeLocked = true;
   h.plots[1].berry = 1;
+  h.plots[1].stage = () => 0;
   h.adapter.apply(t, { berryType: 0 });
   assert.deepEqual(h.actions, [
     ["plant", 2, 0],
@@ -503,6 +504,56 @@ function attachRunner(h, type, target = {}) {
   return h.w.AutoQuestRunner;
 }
 
+// Catches the points-only loop endlessly replanting the wrong berry while shiny work continues.
+test("berry quest waits for existing crops then replants the requested berry alongside shiny and farm points", () => {
+  const h = farm();
+  h.farming.berryInventory[1](5);
+  h.plots.forEach(p => { p.berry = 0; p.stage = () => 0; });
+  h.plots[0].isSafeLocked = true;
+  const r = attachRunner(h, "HarvestBerriesQuest", {berryType:1});
+  const quests = h.w.App.game.quests.questList();
+  for (const type of ["CatchShiniesQuest", "GainFarmPointsQuest"]) {
+    quests.push({constructor:{name:type},amount:100,pointsReward:10,initial:o(0),focus:o(0),claimed:o(false)});
+  }
+  h.w.App.game.quests.questList = () => quests;
+  const route = {id:"route:0:1",target:{kind:"route",number:1,region:0},unlocked:true,capabilities:["shiny"],rates:{}};
+  const plan = () => {
+    const s = r.readQuestSnapshot();
+    s.activities.push(route);
+    return {s, p:r.selectPlan(s,r.buildCandidates(s))};
+  };
+  const first = plan();
+  assert.equal(first.p.primary.id, "route:0:1");
+  assert.equal(first.p.background[0].berryType, 1);
+  assert.ok(first.p.background[0].questIds.includes(first.s.quests[0].id));
+  assert.ok(first.p.background[0].questIds.includes(first.s.quests[2].id));
+  assert.equal(r.evaluateRefresh({...first.s,quests:[first.s.quests[0]]}, {refreshCost:0}).refresh, false);
+  const t = owner(h.adapter);
+  h.adapter.apply(t, {berryType:first.p.background[0].berryType});
+  assert.deepEqual(h.actions, [], "growing crops are never uprooted");
+  h.plots.forEach(p => { p.stage = () => 3; });
+  const next = plan();
+  assert.equal(next.p.background[0].berryType, 1);
+  h.adapter.apply(t, {berryType:next.p.background[0].berryType});
+  assert.deepEqual(h.actions, [["harvest",1],["plant",1,1],["harvest",2],["plant",2,1],["harvest",4],["plant",4,1]]);
+  assert.equal(h.plots[0].berry, 0, "locked plot preserved");
+  assert.equal(h.plots[3].berry, 0, "mutation plan preserved");
+  assert.equal(h.farming.berryInventory[1](), 2);
+  h.plots.forEach(p => { p.stage = () => 0; });
+  const growing = plan();
+  assert.equal(growing.p.primary.id, "route:0:1");
+  assert.equal(growing.p.background[0].berryType, 1);
+});
+
+test("berry transition leaves unrelated mature crops untouched without plantable stock", () => {
+  const h = farm();
+  h.plots.forEach(p => { p.berry = 0; });
+  const t = owner(h.adapter);
+  h.adapter.apply(t, {berryType:1});
+  assert.equal(h.adapter.inspect().status, "blocked");
+  assert.deepEqual(h.actions, []);
+});
+
 test("farm availability reaches refresh policy and rechecks each berry after stock and growth changes", () => {
   const h = farm();
   const r = attachRunner(h, "HarvestBerriesQuest", { berryType: 1 });
@@ -603,13 +654,12 @@ test("mine search availability is checked fresh before and after native search s
 });
 
 // Catches stock being treated as usable despite every usable planting place being unavailable.
-for (const state of ["protected", "committed", "locked", "irrelevant"]) {
+for (const state of ["protected", "committed", "locked"]) {
   test(`farm ${state} plots with stock permit free fallback without uprooting`, () => {
     const h = farm(state === "committed" ? {autoFarmMutationPlan:[0,0,0,0,0]} : {});
     for (const p of h.plots) {
       if (state === "protected") p.isSafeLocked = true;
       if (state === "locked") p.isUnlocked = false;
-      if (state === "irrelevant") p.berry = 1;
     }
     const r = attachRunner(h, "HarvestBerriesQuest", {berryType:0});
     const t = owner(h.adapter);
@@ -617,14 +667,6 @@ for (const state of ["protected", "committed", "locked", "irrelevant"]) {
     h.adapter.apply(t,{berryType:0});
     assert.equal(h.adapter.inspect().status, "blocked");
     assert.deepEqual(h.actions, []);
-    if (state === "irrelevant") {
-      h.plots[0].berry = 0;
-      h.plots[0].stage = () => 0;
-      assert.equal(r.evaluateRefresh(r.readQuestSnapshot(), {refreshCost:0,now:1000000}).refresh, false);
-      h.adapter.apply(t,{berryType:0});
-      assert.equal(h.adapter.inspect().status, "waiting");
-      assert.deepEqual(h.actions, []);
-    }
   });
 }
 

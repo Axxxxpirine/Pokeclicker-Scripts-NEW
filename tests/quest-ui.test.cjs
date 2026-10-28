@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {load, observable} = require('./helpers.cjs');
+const {load, observable, Currency} = require('./helpers.cjs');
 
 function fixture() {
     const f = load('autoquestrunner.user.js', '<section id="questDisplayContainer"><button id="toggle-auto-quest">Auto</button></section><div class="battle-view"></div>', {Preload:{hideSplashScreen(){}}});
@@ -26,9 +26,9 @@ test('runner status describes actual session earnings supplies parallel waits an
     const {w,runner} = fixture();
     let now = 1000;
     w.Date.now = () => now;
-    w.GameConstants = {Currency:{questPoint:2}};
+    w.GameConstants = {Currency};
     const qp = observable(50);
-    w.App.game.wallet = {currencies:[observable(100),observable(5),qp]};
+    w.App.game.wallet = {currencies:[observable(100),qp,observable(5)]};
     w.App.game.pokeballs = {pokeballs:[2,3,4].map(n => ({quantity:observable(n)}))};
     w.PokeAutomationAdapters.adapters.navigation = {acquire:()=>true,release(){},inspect:()=>({status:'running'})};
     assert.equal(runner.start(), true);

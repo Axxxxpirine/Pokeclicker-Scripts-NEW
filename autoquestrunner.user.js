@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.5
+// @version       1.1.6
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -408,14 +408,17 @@ class AutoQuestRunner {
         const tokenYield=typeof PokemonFactory==='undefined' ? 0 : Number(PokemonFactory.routeDungeonTokens?.(objective.target.number,objective.target.region));
         if ((quests.some(q=>q.type==='GainTokensQuest') || objective.recoverTokens) && !(tokenYield>0)) return {ready:false,ball,reason:'Native token yield estimate unavailable'};
         const recoveryAttempts=objective.recoverTokens ? Math.max(0,Number(objective.amount)||0)/(probability*tokenYield) : 0;
-        const attempts=Math.max(1,recoveryAttempts,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
+        // One requested shiny can require many encounters. Refill a sustained
+        // bounded batch, not one ordinary catch's worth of balls each trip.
+        const shinyBatch=captureQuests.some(q=>q.type==='CatchShiniesQuest') ? 1000 : 1;
+        const attempts=Math.max(shinyBatch,recoveryAttempts,...captureQuests.map(q=>q.type==='UsePokeballQuest' ? q.remaining
             : q.type==='GainTokensQuest' ? q.remaining/(probability*tokenYield) : q.remaining/(probability || 1)));
-        const quantity=Math.min(100,Math.ceil(attempts));
+        const quantity=Math.min(1000,Math.ceil(attempts));
         const reserve=Math.max(0,...(objective.requirements || []).filter(p=>p.resource==='money').map(p=>Number(p.amount)||0));
         const shops=this.shopsForBall(ball).map(s=>({...s,quote:Number(s.item.totalPrice(quantity))})).filter(s=>Number.isFinite(s.quote) && s.quote>=0).sort((a,b)=>a.quote-b.quote);
         if (!shops.length) return {ready:false,ball,reason:'No unlocked native shop sells the required standard ball'};
         let purchase={...shops[0],ball,quantity,stock:snapshot.resources.balls?.[ball] || 0,reserve};
-        // If the batch is unaffordable, buy a useful affordable portion instead of banking for 100.
+        // If the batch is unaffordable, buy a useful affordable portion instead of banking for a full batch.
         while (purchase.quantity>1 && purchase.quote+reserve>snapshot.resources.money) {
             purchase.quantity--; purchase.quote=Number(purchase.item.totalPrice(purchase.quantity));
         }
@@ -429,7 +432,7 @@ class AutoQuestRunner {
     }
     static executePurchase(plan) {
         if (!this.owner?.isCurrent()) return {status:'blocked',reason:'Expired supply session'};
-        if (!(Number.isSafeInteger(plan?.quantity) && plan.quantity>0 && plan.quantity<=100 && plan.ball>=0 && plan.ball<=2)) return {status:'blocked',reason:'Invalid standard ball lot'};
+        if (!(Number.isSafeInteger(plan?.quantity) && plan.quantity>0 && plan.quantity<=1000 && plan.ball>=0 && plan.ball<=2)) return {status:'blocked',reason:'Invalid standard ball lot'};
         const current=this.shopsForBall(plan.ball,true).find(s=>s.shop===plan.shop && s.item===plan.item);
         if (!current) return {status:'replan',reason:'Shop unavailable'};
         const stock=Number(this.read(App.game.pokeballs.pokeballs[plan.ball].quantity));

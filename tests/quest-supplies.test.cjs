@@ -228,6 +228,7 @@ test('Shadow quest execution requests encounter traversal only while contributin
 test('active capture type union catches both useful types and protects unrelated shinies',()=>{
  const {r,w,snapshot,activity,balls}=fixture();
  activity.types=[0,2];activity.encounters=[{name:'Normal',type:[0],catchRate:100},{name:'Water',type:[2],catchRate:100}];
+ activity.capabilities.push('captureType');
  snapshot.quests=[0,2].map(type=>({id:String(type),type:'CapturePokemonTypesQuest',target:{type},remaining:10,known:true,active:true}));
  snapshot.resources.balls[0]=20;balls[0].quantity(20);
  w.PokemonHelper.getPokemonById=id=>({type1:id,type2:-1});

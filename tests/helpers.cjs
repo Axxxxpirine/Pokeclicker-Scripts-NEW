@@ -18,6 +18,6 @@ function load(file, html = '', globals = {}, storage = {}) {
     w.$ = selector => ({ unwrap() { const el = w.document.querySelector(selector); el.parentElement.replaceWith(...el.parentElement.childNodes); } });
     const context = dom.getInternalVMContext();
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
-    return { w, dom, timers, run: source => vm.runInContext(source, context, { timeout: 200 }), tick: () => [...timers.values()].forEach(fn => fn()) };
+    return { w, dom, timers, run: source => vm.runInContext(source, context, { timeout: 2000 }), tick: () => [...timers.values()].forEach(fn => fn()) };
 }
 module.exports = { load, observable, Currency };

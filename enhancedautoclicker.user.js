@@ -5,7 +5,7 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.6.5
+// @version       3.6.6
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -26,7 +26,7 @@ class EnhancedAutoClicker {
     static navigationOwner = null;
     // Constants
     static ticksPerSecond = 20;
-    static maxClickMultiplier = 5;
+    static maxClickMultiplier = 25;
     // Auto Clicker
     static autoClickState = ko.observable(validateStorage('autoClickState', false));
     static autoClickMultiplier = validateStorage('autoClickMultiplier', 1, (v) => (Number.isInteger(v) && v >= 1));

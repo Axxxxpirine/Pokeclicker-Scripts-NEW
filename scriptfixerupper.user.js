@@ -5,7 +5,7 @@
 // @description   Resets known first-party script preferences while preserving saves, other app data, script enablement and update choices.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       2.2.5
+// @version       2.2.6
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -34,6 +34,7 @@ function initFixerUpper(resolve) {
                 'autoNavigationSettings',
                 'autoClickState', 'autoClickMultiplier', 'autoGymState', 'autoGymSelect',
                 'autoDungeonState', 'autoDungeonFinishBeforeStopping', 'autoDungeonEncounterMode',
+                'autoDungeonStopWhenCaught',
                 'autoDungeonChestMode', 'autoDungeonLootTier', 'autoDungeonAlwaysOpenRareChests',
                 'autoClickCalcEfficiencyDisplayMode', 'autoClickCalcDamageDisplayMode',
                 'autoHatchState', 'autoEgg', 'autoFossil', 'shinyFossil', 'pokerusModeState',

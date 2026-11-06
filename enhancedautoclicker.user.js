@@ -5,7 +5,7 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.6.4
+// @version       3.6.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -37,6 +37,7 @@ class EnhancedAutoClicker {
     // Auto Dungeon
     static autoDungeonState = ko.observable(validateStorage('autoDungeonState', false));
     static autoDungeonFinishBeforeStopping = validateStorage('autoDungeonFinishBeforeStopping', true);
+    static autoDungeonStopWhenCaught = validateStorage('autoDungeonStopWhenCaught', false);
     static autoDungeonEncounterMode = validateStorage('autoDungeonEncounterMode', false);
     static autoDungeonChestMode = validateStorage('autoDungeonChestMode', false);
     static autoDungeonLootTier = validateStorage('autoDungeonLootTier', 0, [...Object.keys(baseLootTierChance).keys()]);
@@ -172,6 +173,9 @@ class EnhancedAutoClicker {
                     <button id="auto-dungeon-start" class="btn btn-block btn-${this.autoDungeonState() ? 'success' : 'danger'}" style="font-size: 8pt;">
                         Auto Dungeon [${this.autoDungeonState() ? 'ON' : 'OFF'}]
                     </button>
+                    <button id="auto-dungeon-stop-when-caught" type="button" class="btn btn-block btn-${this.autoDungeonStopWhenCaught ? 'success' : 'secondary'}" aria-pressed="${this.autoDungeonStopWhenCaught}" style="font-size: 8pt; margin-top: 2px;" title="Stop Auto Dungeon once every currently available Pokémon, including bosses, has been caught. Normal captures count, shinies are not required. Respects the finish-before-stopping setting.">
+                        Stop when all caught [${this.autoDungeonStopWhenCaught ? 'ON' : 'OFF'}]
+                    </button>
                 </div>
                 <div id="auto-dungeon-encounter-mode" style="flex: initial; max-height: 30px; max-width: 30px; padding: 2px;">
                     <img title="Auto Dungeon fights mode" src="assets/images/dungeons/encounter.png" height="100%" style="${this.autoDungeonEncounterMode ? '' : 'filter: grayscale(100%);'}" />
@@ -255,6 +259,7 @@ class EnhancedAutoClicker {
         document.getElementById('auto-gym-start').addEventListener('click', () => { EnhancedAutoClicker.toggleAutoGym(); });
         document.getElementById('auto-gym-select').addEventListener('change', (event) => { EnhancedAutoClicker.changeSelectedGym(event); });
         document.getElementById('auto-dungeon-start').addEventListener('click', () => { EnhancedAutoClicker.toggleAutoDungeon(true); });
+        document.getElementById('auto-dungeon-stop-when-caught').addEventListener('click', () => { EnhancedAutoClicker.toggleAutoDungeonStopWhenCaught(); });
         document.getElementById('auto-dungeon-encounter-mode').addEventListener('click', () => { EnhancedAutoClicker.toggleAutoDungeonEncounterMode(); });
         document.getElementById('auto-dungeon-chest-mode').addEventListener('click', () => { EnhancedAutoClicker.toggleAutoDungeonChestMode(); });
         document.getElementById('checkbox-autoDungeonFinishBeforeStopping').addEventListener('change', () => { EnhancedAutoClicker.toggleAutoDungeonFinishBeforeStopping(); });
@@ -414,6 +419,16 @@ class EnhancedAutoClicker {
                 this.toggleAutoClick();
             }
         }
+    }
+
+    static toggleAutoDungeonStopWhenCaught() {
+        this.autoDungeonStopWhenCaught = !this.autoDungeonStopWhenCaught;
+        localStorage.setItem('autoDungeonStopWhenCaught', this.autoDungeonStopWhenCaught);
+        const button = document.getElementById('auto-dungeon-stop-when-caught');
+        button.classList.toggle('btn-success', this.autoDungeonStopWhenCaught);
+        button.classList.toggle('btn-secondary', !this.autoDungeonStopWhenCaught);
+        button.setAttribute('aria-pressed', String(this.autoDungeonStopWhenCaught));
+        button.textContent = `Stop when all caught [${this.autoDungeonStopWhenCaught ? 'ON' : 'OFF'}]`;
     }
 
     static toggleAutoDungeonEncounterMode() {
@@ -637,6 +652,22 @@ class EnhancedAutoClicker {
 
     /* Auto Dungeon */
 
+    static stopAutoDungeonWhenCaught(allowSlowStop = false) {
+        // Auto Navigation / AutoQuest use this traversal with their own objectives.
+        if (!this.autoDungeonStopWhenCaught || !this.autoDungeonState() || this.navigationOwner?.active) {
+            return;
+        }
+        if (allowSlowStop && this.autoDungeonTracker.stopAfterFinishing) {
+            return;
+        }
+        const dungeon = App.game.gameState === GameConstants.GameState.dungeon
+            ? DungeonRunner.dungeon : player.town?.dungeon;
+        const pokemon = dungeon?.allAvailablePokemon();
+        if (pokemon?.length && pokemon.every(name => App.game.party.alreadyCaughtPokemonByName(name))) {
+            this.toggleAutoDungeon(allowSlowStop);
+        }
+    }
+
     /**
      * Automatically begins and progresses through dungeons with multiple pathfinding options
      */
@@ -645,6 +676,10 @@ class EnhancedAutoClicker {
         if (App.game.gameState === GameConstants.GameState.dungeon) {
             if (DungeonRunner.fighting() || DungeonBattle.catching()) {
                 // Can't do anything while in a battle
+                return;
+            }
+            this.stopAutoDungeonWhenCaught(true);
+            if (!this.autoDungeonState() && !this.navigationOwner?.active) {
                 return;
             }
             // Scan each new dungeon floor
@@ -673,6 +708,11 @@ class EnhancedAutoClicker {
         }
         // Begin dungeon
         else if (this.canStartAutoDungeon()) {
+            const wasRunning = this.autoDungeonState();
+            this.stopAutoDungeonWhenCaught();
+            if (wasRunning && !this.autoDungeonState()) {
+                return;
+            }
             // Enter dungeon if unlocked and affordable
             DungeonRunner.initializeDungeon(player.town.dungeon);
         } else {
@@ -922,7 +962,9 @@ class EnhancedAutoClicker {
     static restartDungeon() {
         if (App.game.gameState !== GameConstants.GameState.dungeon) {
             return;
-        } else if (!EnhancedAutoClicker.canStartAutoDungeon()) {
+        }
+        this.stopAutoDungeonWhenCaught();
+        if (!this.autoDungeonState() || !this.autoClickState() || !this.canStartAutoDungeon()) {
             MapHelper.moveToTown(DungeonRunner.dungeon.name);
             return;
         }
@@ -958,6 +1000,7 @@ class EnhancedAutoClicker {
                 }
                 GameHelper.incrementObservable(App.game.statistics.dungeonsCleared[GameConstants.getDungeonIndex(DungeonRunner.dungeon.name)]);
 
+                EnhancedAutoClicker.stopAutoDungeonWhenCaught();
                 if (EnhancedAutoClicker.autoDungeonTracker.stopAfterFinishing) {
                     EnhancedAutoClicker.toggleAutoDungeon();
                 }

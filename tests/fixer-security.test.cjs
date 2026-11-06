@@ -53,6 +53,7 @@ test('script reset removes known preferences and preserves unknown game data and
     const reset = {
         autoPlantState: 'true', autoFarmMutationPlan: 'broken', autoHatchQueueLimit: 'bad',
         autoClickMultiplier: 'bad', filterBallPref: 'bad', AVSgraphicsDisabledSettings: 'bad',
+        autoDungeonStopWhenCaught: 'true',
         autoQuestRefreshBudget: 'bad', omegaProteinCap: 'bad', shinySetRates: 'bad', autoMineBattery: 'false',
         autoMineSellReserves: '{"default":10,"items":{}}',
         'Ephenia\'s Gift': 'true',

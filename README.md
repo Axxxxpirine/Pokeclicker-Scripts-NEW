@@ -63,7 +63,7 @@ These scripts automate actions or change the interface. Individual options can e
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
 | [Additional Visual Settings](additionalvisualsettings.user.js) | 3.0.2 | Hide selected battle visuals and add navigation shortcuts. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/additionalvisualsettings.user.js) |
-| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.4 | Adjustable auto clicking, income rates, gym repeats and dungeon exploration. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
+| [Enhanced Auto Clicker](enhancedautoclicker.user.js) | 3.6.5 | Adjustable auto clicking, income rates, gym repeats and dungeon exploration with collection auto-stop. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautoclicker.user.js) |
 | [Auto Navigation](autonavigation.user.js) | 1.1.3 | Travel toward bounded objectives, tracked achievements, League cycles and collection goals. Requires Enhanced Auto Clicker. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autonavigation.user.js) |
 | [Catch Filter Fantasia](catchfilterfantasia.user.js) | 1.9.8 | Species/type capture filters, separate normal/shiny ball preferences and an optional Pokérus column. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/catchfilterfantasia.user.js) |
 | [Enhanced Auto Hatchery](enhancedautohatchery.user.js) | 3.3.4 | Automatic breeding and egg hatching, filters, priority IDs, native queue filling and type efficiency. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/enhancedautohatchery.user.js) |
@@ -100,7 +100,7 @@ These scripts can change normal game rules or directly change saved progression.
 
 | Script | Version | What it does | Install |
 | --- | --- | --- | --- |
-| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.5 | Reset known script preferences after confirmation, preserving saves and unrelated data. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
+| [Script Fixer Upper](scriptfixerupper.user.js) | 2.2.6 | Reset known script preferences after confirmation, preserving saves and unrelated data. Use only for troubleshooting. | [Install](https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/scriptfixerupper.user.js) |
 
 ## Feature guide
 
@@ -137,6 +137,8 @@ During a visible uncaught pursuit, the script attempts to capture an uncaught en
 ### Enhanced Auto Clicker and Auto Navigation
 
 Enhanced Auto Clicker adds **Auto Click**, an attack-rate control, **Auto Gym** and **Auto Dungeon**. Dungeon options control exploration, fights and chest targeting. Actual throughput depends on the game and capture delays.
+
+**Stop when all caught**, below **Auto Dungeon**, stops repeats once the game's currently available Pokémon list for that dungeon is fully caught, including available bosses. Normal captures count, shinies are not required. The option is OFF by default and saved between reloads. It waits for captures to resolve and respects **Auto Dungeon finishes dungeons before turning off**, so an already-paid run can finish without buying another entry. It does not change capture filters, Poké Ball choices, exploration settings or Auto Navigation / AutoQuest objectives.
 
 While Auto Click is ON, its statistics panel also shows **Money/s** and **Dungeon tokens/s**. These are gross earnings from all sources recorded by the game, so purchases and dungeon entry costs do not reduce them. Values update once per second and average the last ten samples (normally ten seconds), using actual elapsed time. The window resets when changing locations, restarting Auto Click or changing its statistics display settings. With Auto Click OFF, the values show a dash.
 

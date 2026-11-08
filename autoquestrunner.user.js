@@ -4,7 +4,7 @@
 // @author        Joey / Codex (automation adapter integration)
 // @description   Complete repeatable quests, prepare supplies and coordinate parallel automation with one session-only switch.
 // @license       GPL-3.0 License
-// @version       1.1.10
+// @version       1.1.11
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
 // @downloadURL   https://raw.githubusercontent.com/Axxxxpirine/Pokeclicker-Scripts-NEW/master/autoquestrunner.user.js
@@ -614,7 +614,7 @@ class AutoQuestRunner {
                 : cost>0 && !native?.canAffordRefresh?.() ? `Reset waiting for funds · Current cost: ${price}`
                 : `Reset due · Current cost: ${price}`;
         }
-        if (status.textContent!==text) status.textContent=text;
+        this.renderText(status,text);
     }
     static start(names = ['navigation']) {
         if (this.active) return false;
@@ -971,13 +971,21 @@ class AutoQuestRunner {
         const currency = typeof GameConstants === 'undefined' ? null : GameConstants.Currency?.questPoint;
         return currency == null ? 0 : Number(this.read(App.game.wallet?.currencies?.[currency])) || 0;
     }
+    static renderText(element, text) {
+        // Compare our source text, not the DOM text a translator may have changed.
+        if (element.dataset.text === text) return;
+        element.textContent = text;
+        element.dataset.text = text;
+    }
     static render() {
         this.renderRefreshTimer();
         const button = document.getElementById('auto-quest-runner');
         if (button) {
-            button.textContent = `Auto Quests: ${this.active ? 'ON' : 'OFF'}`;
-            button.setAttribute('aria-pressed',String(this.active));
-            button.className = `btn btn-sm btn-block btn-${this.active ? 'success' : 'secondary'}`;
+            this.renderText(button,`Auto Quests: ${this.active ? 'ON' : 'OFF'}`);
+            const pressed = String(this.active);
+            if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed',pressed);
+            const className = `btn btn-sm btn-block btn-${this.active ? 'success' : 'secondary'}`;
+            if (button.className !== className) button.className = className;
         }
         const status = document.getElementById('auto-quest-runner-status');
         if (!status) return;
@@ -1028,12 +1036,17 @@ class AutoQuestRunner {
                 .filter(reason => !/Progress estimate unavailable, observe useful attempts/.test(reason));
             if (reasons.length) lines.push(`Waiting / limits: ${reasons.slice(0,3).map(readable).join(' · ')}${reasons.length > 3 ? ` · ${reasons.length-3} more quest limits` : ''}`);
         }
-        // Stable text avoids repeatedly announcing the same status every tick.
-        if (status.dataset.text !== lines.join('\n')) {
-            status.replaceChildren(...lines.map(text => {
-                const line = document.createElement('div'); line.textContent = text; return line;
-            }));
-            status.dataset.text = lines.join('\n');
+        // A changing counter must not recreate every line and restart translation.
+        lines.forEach((text,index) => {
+            let line = status.children[index];
+            if (!line) {
+                line = document.createElement('div');
+                status.appendChild(line);
+            }
+            this.renderText(line,text);
+        });
+        while (status.children.length > lines.length) {
+            status.lastElementChild.remove();
         }
     }
 }

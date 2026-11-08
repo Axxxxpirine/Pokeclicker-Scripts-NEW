@@ -77,3 +77,56 @@ test('navigation costs are visible separately from supply purchases', () => {
     assert.match(text,/Supply spend: 80 money/);
     assert.match(text,/Navigation spend: 20 money.*30 dungeon tokens/);
 });
+
+test('unchanged runner controls preserve translated text without DOM mutations', () => {
+    const {w,runner} = fixture();
+    const button = w.document.getElementById('auto-quest-runner');
+    const timer = w.document.getElementById('auto-quest-refresh-status');
+    button.textContent = 'Translated OFF';
+    timer.textContent = 'Translated timer OFF';
+    const observer = new w.MutationObserver(() => {});
+    observer.observe(button, {subtree:true,childList:true,characterData:true,attributes:true});
+    observer.observe(timer, {subtree:true,childList:true,characterData:true,attributes:true});
+    runner.render();
+    assert.equal(button.textContent, 'Translated OFF');
+    assert.equal(timer.textContent, 'Translated timer OFF');
+    assert.equal(observer.takeRecords().length, 0);
+    runner.active = true;
+    runner.render();
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+    assert.match(button.textContent, /ON/);
+    runner.setRefreshTimer(true, 5);
+    assert.match(timer.textContent, /Next reset in 5:00/);
+    observer.disconnect();
+});
+
+test('changing session counters preserves unchanged translated status lines', () => {
+    const {w,runner} = fixture();
+    let now = 1000;
+    w.Date.now = () => now;
+    runner.active = true;
+    runner.sessionStarted = now;
+    runner.sessionQP = 60;
+    runner.lastQP = 0;
+    runner.reason = 'Counting actual native stages';
+    runner.render();
+    const status = w.document.getElementById('auto-quest-runner-status');
+    const heading = status.children[0], reason = status.children[1];
+    heading.textContent = 'Translated activity';
+    reason.textContent = 'Translated reason';
+    now += 60000;
+    runner.render();
+    assert.equal(status.children[0], heading);
+    assert.equal(status.children[1], reason);
+    assert.equal(heading.textContent, 'Translated activity');
+    assert.equal(reason.textContent, 'Translated reason');
+    assert.match(status.textContent, /60\.0 QP\/min/);
+    runner.reason = '';
+    runner.render();
+    assert.doesNotMatch(status.textContent, /Translated reason/);
+    runner.active = false;
+    runner.sessionStarted = null;
+    runner.render();
+    assert.equal(status.children.length, 1);
+    assert.match(status.textContent, /OFF.*Ready when enabled/);
+});

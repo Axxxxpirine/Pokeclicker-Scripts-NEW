@@ -5,7 +5,7 @@
 // @description   Edit your save for debug (currency, gems, pokeballs, pokemons, ...)
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       1.1.2
+// @version       1.1.3
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -356,53 +356,53 @@ function initSaveEditor() {
                 </div>
                 <div class="modal-body">
                     <ul class="nav nav-tabs nav-fill">
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link active" href="#currency">Currency</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#gems">Gems</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#pokeballs">Pokeballs</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#berries">Berries</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#evolutionitems">Evolution Items</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#vitamins">Vitamins</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#heldItems">Held items</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#items">All Items</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#underground">Underground</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#keyItems">Key Items</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#pokedex">Pokedex</a></li>
-                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#questlines">Quests</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link active" href="#debug-cheats-currency">Currency</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-gems">Gems</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-pokeballs">Pokeballs</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-berries">Berries</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-evolutionitems">Evolution Items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-vitamins">Vitamins</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-heldItems">Held items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-items">All Items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-underground">Underground</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-keyItems">Key Items</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-pokedex">Pokedex</a></li>
+                        <li class="nav-item"><a data-toggle="tab" class="nav-link" href="#debug-cheats-questlines">Quests</a></li>
                     </ul>
                     <div class="tab-content">
-                        <div id="currency" class="tab-pane p-3 active">
+                        <div id="debug-cheats-currency" class="tab-pane p-3 active">
                             <p>Choose an operation, enter a whole amount, then click a currency. Add grants the exact amount without bonuses. Subtract stops at zero. Repair only replaces an invalid balance with your entered value.</p>
                             <select class="custom-select" data-debug-operation aria-label="Currency operation"><option value="add">Add</option><option value="subtract">Subtract</option><option value="repair">Repair invalid balance</option></select>
                             <input id="inputAddCurrency" class="form-control" type="number" placeholder="1000000" value="1000000" min="0">
                         </div>
-                        <div id="gems" class="tab-pane p-3">
+                        <div id="debug-cheats-gems" class="tab-pane p-3">
                             <p>On click add gems (input)</p>
                             <input id="inputAddGems" class="form-control" type="number" placeholder="1000000" value="1000000" min="0">
                         </div>
-                        <div id="pokeballs" class="tab-pane p-3">
+                        <div id="debug-cheats-pokeballs" class="tab-pane p-3">
                             <p>On click add pokeballs (input)</p>
                             <input id="inputAddPokeballs" class="form-control" type="number" placeholder="1000" value="1000" min="0">
                         </div>
-                        <div id="berries" class="tab-pane p-3">
+                        <div id="debug-cheats-berries" class="tab-pane p-3">
                             <p>On click add berries (input)</p>
                             <input id="inputAddBerries" class="form-control" type="number" placeholder="1000" value="1000" min="0">
                         </div>
-                        <div id="evolutionitems" class="tab-pane p-3">
+                        <div id="debug-cheats-evolutionitems" class="tab-pane p-3">
                             <p>On click add evolution items (input)</p>
                             <input id="inputAddEvolutionItems" class="form-control" type="number" placeholder="100" value="100" min="0">
                         </div>
-                        <div id="vitamins" class="tab-pane p-3">
+                        <div id="debug-cheats-vitamins" class="tab-pane p-3">
                             <p>On click add vitamins (input)</p>
                             <input id="inputAddVitamins" class="form-control" type="number" placeholder="100" value="100" min="0">
                         </div>
-                        <div id="heldItems" class="tab-pane p-3">
+                        <div id="debug-cheats-heldItems" class="tab-pane p-3">
                             <p>On click add held items items (input)</p>
                             <input id="inputAddHeldItems" class="form-control" type="number" placeholder="100" value="100" min="0">
                         </div>
-                        <div id="items" class="tab-pane p-3"><p>Grant an item through its native gain method. Unique items keep their native limits.</p><input id="inputAddItems" aria-label="Item amount" class="form-control" type="number" value="100" min="1"></div>
-                        <div id="underground" class="tab-pane p-3"><p>Grant an Underground item.</p><input id="inputAddUnderground" aria-label="Underground amount" class="form-control" type="number" value="100" min="1"></div>
-                        <div id="keyItems" class="tab-pane p-3"><p>Click a key item to unlock it. Unlocking can trigger the game's rewards and progression.</p></div>
-                        <div id="pokedex" class="tab-pane p-3">
+                        <div id="debug-cheats-items" class="tab-pane p-3"><p>Grant an item through its native gain method. Unique items keep their native limits.</p><input id="inputAddItems" aria-label="Item amount" class="form-control" type="number" value="100" min="1"></div>
+                        <div id="debug-cheats-underground" class="tab-pane p-3"><p>Grant an Underground item.</p><input id="inputAddUnderground" aria-label="Underground amount" class="form-control" type="number" value="100" min="1"></div>
+                        <div id="debug-cheats-keyItems" class="tab-pane p-3"><p>Click a key item to unlock it. Unlocking can trigger the game's rewards and progression.</p></div>
+                        <div id="debug-cheats-pokedex" class="tab-pane p-3">
                             <p><b>You can break your game, please backup!</b></br><i>Do not complete pokedex from another region if you are not in the region you will not be able to go to the next region!</i></p>
                             <button class="btn btn-primary btn-block" data-debug-action="loadPkdx">(Re)Load Data</button>
                             <div class="form-row text-left">
@@ -452,7 +452,7 @@ function initSaveEditor() {
                                 </tbody>
                             </table>
                         </div>
-                        <div id="questlines" class="tab-pane p-3">
+                        <div id="debug-cheats-questlines" class="tab-pane p-3">
                             <button class="btn btn-primary btn-block" data-debug-action="loadQuestLines">(Re)Load Data</button>
                             <div class="form-row text-left">
                                 <div class="form-group col-md-6 col-6">
@@ -515,7 +515,7 @@ function initSaveEditor() {
             const label = document.createElement('div');
             label.textContent = resource.name;
             button.append(label);
-            modalBody.querySelector(`#${kind}`).append(button);
+            modalBody.querySelector(`#debug-cheats-${kind}`).append(button);
         }
     }
 

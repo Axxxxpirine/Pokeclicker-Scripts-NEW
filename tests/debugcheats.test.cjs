@@ -208,3 +208,19 @@ test('berry and Oak shop aliases are excluded even when their classes are not gl
     assert.ok(c.d.querySelector('[data-debug-kind="berries"][data-debug-key="1"]'));
     assert.equal(c.game.oakItems.itemList[0].purchased, false);
 });
+
+test('debug tabs do not steal the native Key Items tab target', () => {
+    const c = setup(false, w => {
+        w.document.getElementById('profileModal').insertAdjacentHTML('afterend', '<section id="showItemsModal"><a href="#keyItems" data-toggle="tab">Key Items</a><div id="keyItems" class="tab-pane">Native inventory</div></section>');
+    });
+    try {
+        const nativePane = c.d.querySelector('#showItemsModal .tab-pane');
+        const nativeLink = c.d.querySelector('#showItemsModal a');
+        assert.equal(c.d.querySelector(nativeLink.getAttribute('href')), nativePane, 'native tab must resolve to its inventory, not the debug panel');
+        for (const link of c.d.querySelectorAll('#saveEditorModal a[data-toggle="tab"]')) {
+            const target = c.d.querySelector(link.getAttribute('href'));
+            assert.equal(target?.closest('.modal')?.id, 'saveEditorModal');
+        }
+        assert.deepEqual(c.calls, [], 'opening or creating tabs must not grant resources');
+    } finally { c.w.close(); }
+});

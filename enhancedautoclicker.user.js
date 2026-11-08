@@ -5,7 +5,7 @@
 // @description   Clicks through battles, with adjustable speed, and provides various insightful statistics. Also includes an automatic gym battler and automatic dungeon explorer with multiple pathfinding modes.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.6.6
+// @version       3.6.8
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -31,6 +31,7 @@ class EnhancedAutoClicker {
     static autoClickState = ko.observable(validateStorage('autoClickState', false));
     static autoClickMultiplier = validateStorage('autoClickMultiplier', 1, (v) => (Number.isInteger(v) && v >= 1));
     static autoClickerLoop;
+    static autoClickerWorker;
     // Auto Gym
     static autoGymState = ko.observable(validateStorage('autoGymState', false));
     static autoGymSelect = validateStorage('autoGymSelect', 0, [0, 1, 2, 3, 4]);
@@ -494,13 +495,57 @@ class EnhancedAutoClicker {
     static toggleAutoClickerLoop() {
         var delay = Math.ceil(1000 / this.ticksPerSecond);
         clearInterval(this.autoClickerLoop);
+        this.autoClickerWorker?.terminate();
+        this.autoClickerWorker = null;
         // Restart stats calculator
         this.resetCalculator();
         // Only use click multiplier while autoclicking
         this.overrideClickAttack(this.autoClickState() ? this.autoClickMultiplier : 1);
         if (this.autoClickState()) {
-            // Start autoclicker loop
-            this.autoClickerLoop = setInterval(() => EnhancedAutoClicker.autoClicker(), delay);
+            // Window timers are throttled in hidden tabs, while the native game
+            // clock keeps running in a worker. Use a single worker clock here too.
+            const fallback = () => {
+                this.autoClickerLoop = setInterval(() => EnhancedAutoClicker.autoClicker(), delay);
+            };
+            if (typeof Worker !== 'function' || typeof URL.createObjectURL !== 'function') {
+                fallback();
+                return;
+            }
+            let url;
+            try {
+                url = URL.createObjectURL(new Blob([`
+                    setInterval(() => {
+                        postMessage(performance.timeOrigin + performance.now());
+                    }, ${delay});
+                `], {type: 'text/javascript'}));
+                const worker = new Worker(url);
+                this.autoClickerWorker = worker;
+                let lastTick = -Infinity;
+                worker.onmessage = event => {
+                    if (this.autoClickerWorker !== worker || !Number.isFinite(event.data)) return;
+                    const now = performance.now();
+                    // Drop old/batched messages after a stalled page resumes.
+                    // No acknowledgement: its return trip is delayed in hidden Zen tabs.
+                    if (performance.timeOrigin + now - event.data > 200 || now - lastTick < delay - 10) return;
+                    lastTick = now;
+                    if (this.autoClickState()) this.autoClicker();
+                };
+                worker.onerror = event => {
+                    if (this.autoClickerWorker !== worker) return;
+                    event.preventDefault();
+                    worker.terminate();
+                    this.autoClickerWorker = null;
+                    console.warn('Enhanced Auto Clicker: background clock unavailable, using window timers.');
+                    fallback();
+                };
+            } catch (error) {
+                this.autoClickerWorker?.terminate();
+                this.autoClickerWorker = null;
+                console.warn('Enhanced Auto Clicker: background clock unavailable, using window timers.', error);
+                fallback();
+            } finally {
+                if (url) URL.revokeObjectURL(url);
+            }
         } else {
             if (this.autoGymState()) {
                 GymRunner.autoRestart(false);

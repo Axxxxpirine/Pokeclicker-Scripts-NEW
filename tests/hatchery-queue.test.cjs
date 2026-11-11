@@ -11,7 +11,7 @@ function setup(party, storage = {}, manual = [], capacity = 10, incubating = [])
         addPokemonToQueue(p) { if (queue.length >= capacity) return false; queue.push([0, p.id]); p.breeding = true; return true; },
         addPokemonToHatchery(p) {if (p.breeding) return false; added.push(p.id); p.breeding = true; return true;},
     };
-    const h = load('enhancedautohatchery.user.js', '<div id="breedingDisplay"><div class="card-header"></div></div><div id="breedingModal"><div class="modal-header"></div></div>', {
+    const h = load('enhancedautohatchery.user.js', '<div id="breedingDisplay"><div class="card-header"></div></div><div id="breedingModal"><div class="modal-body"><div id="breeding-pokemon-list-container"><div class="scrolling-div-breeding-list"></div></div></div></div>', {
         App: {isUsingClient: true, game: {breeding, party: {caughtPokemon: party}}},
         BreedingController: {hatcherySortedFilteredList: () => party, hatcheryFilteredList: o(party), calculateRegionalMultiplier: p => p.regionMultiplier ?? 1},
         Settings: {getSetting: () => ({observableValue: o(false)})},

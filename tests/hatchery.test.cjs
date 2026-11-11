@@ -4,7 +4,14 @@ const { load, observable } = require('./helpers.cjs');
 function hatchery() {
     let filled = 0;
     const breeding = { eggSlots: 4, hatchPokemonEgg() {}, hasFreeEggSlot: () => filled < 4, addPokemonToHatchery: () => { filled++; return true; }, canAccess: () => true };
-    const h = load('enhancedautohatchery.user.js', '<div id="breedingDisplay"><div class="card-header"></div></div><div id="breedingModal"><div class="modal-header"><div class="d-none"><button>close</button><button data-bind="visible: false">warning</button></div></div></div>', {
+    const h = load('enhancedautohatchery.user.js', `
+        <div id="breedingDisplay"><div class="card-header"></div></div>
+        <div id="breedingModal">
+            <div class="modal-header"><div class="d-none"><button>close</button><button data-bind="visible: false">warning</button></div></div>
+            <div class="modal-body">
+                <div id="breeding-pokemon-list-container"><div class="scrolling-div-breeding-list"></div></div>
+            </div>
+        </div>`, {
         App: { isUsingClient: true, game: { breeding, party: { caughtPokemon: [{ isHatchable: () => true }] } } },
         BreedingController: { hatcherySortedFilteredList: () => [], hatcheryFilteredList: observable([]) },
         Settings: { getSetting: () => ({ observableValue: observable(false) }) },
@@ -19,10 +26,11 @@ test('saved fossil settings cannot break ordinary hatching after fossil incubati
     h.run('autoHatcher()');
     assert.equal(h.filled(), 4);
 });
-test('hatchery controls stay outside hidden game warning containers', () => {
+test('hatchery controls share the native Pokémon list scroll area and stay outside hidden warnings', () => {
     const h = hatchery();
     h.w.initAutoHatch();
     const button = h.w.document.getElementById('auto-egg');
+    assert.ok(button.closest('#breeding-pokemon-list-container .scrolling-div-breeding-list'));
     assert.equal(button.closest('.d-none'), null);
     assert.equal(h.w.document.getElementById('auto-fossil').disabled, true);
 });

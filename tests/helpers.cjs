@@ -15,7 +15,10 @@ function load(file, html = '', globals = {}, storage = {}) {
     let id = 0;
     Object.assign(w, { console, GameConstants:{Currency}, App: { isUsingClient: true, game: {} }, setInterval: fn => { timers.set(++id, fn); return id; }, clearInterval: n => timers.delete(n), setTimeout: fn => { const timeoutId = ++id; timers.set(timeoutId, () => { timers.delete(timeoutId); fn(); }); return timeoutId; }, clearTimeout: n => timers.delete(n), ...globals });
     for (const [k, v] of Object.entries(storage)) w.localStorage.setItem(k, JSON.stringify(v));
-    w.$ = selector => ({ unwrap() { const el = w.document.querySelector(selector); el.parentElement.replaceWith(...el.parentElement.childNodes); } });
+    w.$ = selector => ({
+        unwrap() { const el = w.document.querySelector(selector); el.parentElement.replaceWith(...el.parentElement.childNodes); },
+        on() {},
+    });
     const context = dom.getInternalVMContext();
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context);
     return { w, dom, timers, run: source => vm.runInContext(source, context, { timeout: 2000 }), tick: () => [...timers.values()].forEach(fn => fn()) };

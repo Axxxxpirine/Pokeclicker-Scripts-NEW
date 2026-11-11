@@ -6,7 +6,7 @@ function hatchery(party, filtered = party, storage = {}) {
     const added = [];
     const breeding = { eggList: Array.from({ length: 4 }, (_, i) => () => ({ isNone: () => i >= added.length })), hatcheryHelpers: { hired: () => [] }, eggSlots: 4, hatchPokemonEgg() {}, hasFreeEggSlot: () => added.length < 4, canAccess: () => true,
         addPokemonToHatchery(p) { if (!this.hasFreeEggSlot() || !p.isHatchable()) return false; added.push(p.id); p.breeding = true; return true; } };
-    const h = load('enhancedautohatchery.user.js', '<div id="breedingDisplay"><div class="card-header"></div></div><div id="breedingModal"><div class="modal-header"></div></div>', {
+    const h = load('enhancedautohatchery.user.js', '<div id="breedingDisplay"><div class="card-header"></div></div><div id="breedingModal"><div class="modal-body"><div id="breeding-pokemon-list-container"><div class="scrolling-div-breeding-list"></div></div></div></div>', {
         App: { isUsingClient: true, game: { breeding, party: { caughtPokemon: party }, keyItems: { hasKeyItem: () => true } } },
         BreedingController: { hatcherySortedFilteredList: () => filtered, hatcheryFilteredList: observable(filtered) },
         Settings: { getSetting: () => ({ observableValue: observable(false) }) },

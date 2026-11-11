@@ -5,7 +5,7 @@
 // @description   Automatically hatches eggs at 100% completion. Adds On/Off controls for auto hatching and store bought eggs. Includes strict filters and fair priority IDs. Fossil incubation was removed from the game.
 // @copyright     https://github.com/Ephenia
 // @license       GPL-3.0 License
-// @version       3.3.4
+// @version       3.3.5
 
 // @homepageURL   https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/
 // @supportURL    https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/issues
@@ -145,7 +145,13 @@ function initAutoHatch() {
     <small id="priority-help" class="w-100">Comma or space separated. Whole IDs include forms, decimals select one form. Priorities rotate and alternate with other eligible Pokémon. PKRS Mode keeps precedence.</small>
     <small id="priority-status" class="w-100" role="status"></small>`;
 
-    breedingModal.querySelector('.modal-header').after(autoHatchControls);
+    const modalBody = breedingModal.querySelector('.modal-body');
+    const pokemonList = modalBody.querySelector('#breeding-pokemon-list-container .scrolling-div-breeding-list');
+    pokemonList.prepend(autoHatchControls);
+    $(breedingModal).on('shown.bs.tab', 'a[data-toggle="tab"]', ({ target }) => {
+        const scrollArea = target.hash === '#breeding-pokemon' ? pokemonList : modalBody;
+        scrollArea.prepend(autoHatchControls);
+    });
     for (const id of ['auto-fossil', 'shiny-fossils']) {
         const button = document.getElementById(id);
         button.disabled = true;

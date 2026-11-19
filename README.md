@@ -284,7 +284,7 @@ Open an [issue in this fork](https://github.com/Axxxxpirine/Pokeclicker-Scripts-
 
 This fork targets **Pokéclicker 0.10.26**. Browser testing previously used **Zen 1.23.4b with Tampermonkey 5.5.0**. Desktop 3.0.0 was exercised with **Electron 45.0.0 on macOS**, using the real game in an isolated test profile. Other userscript managers, every script combination and all game regions have not been exercised.
 
-The automated suite covers Safari pathfinding and capture priorities, mining, farming, hatchery queues, navigation limits, quest budgets, custom overrides, desktop loading and updates, security regressions and archive/source consistency. [GitHub checks](https://github.com/Axxxxpirine/Pokeclicker-Scripts-NEW/actions/workflows/security.yml) run the suite and dependency audits on macOS, Windows and Linux. These checks do not substitute for native Windows/Linux gameplay testing.
+The automated suite covers Safari pathfinding and capture priorities, mining, farming, hatchery queues, navigation limits, quest budgets, custom overrides, desktop loading and updates, security regressions and archive/source consistency. Run it locally with `npm test`, and check dependencies with `npm audit`. The suite does not substitute for native Windows/Linux gameplay testing.
 
 Safari movement, bait, captures, item collection and stopping were checked in a live Kanto session with version 1.2.5. The visible-uncaught pursuit introduced in **Auto Safari 1.3.0** is covered by automated tests and code review. Version 1.3.1 additionally updates Desktop activation handling. The new pursuit has not been exercised in a live session.
 
